@@ -9,9 +9,8 @@
 #   4. Dermatology
 #   5. Artificial I
 #
-# Descrição: Implementação do classificador Bayesiano Gaussiano com
-#            análise de acurácia utilizando todos os atributos
-#            (multivariado).
+# Descrição: Implementação e comparação de três classificadores:
+#            Bayesiano Gaussiano Multivariado, KNN e DMC.
 #
 # Estrutura:
 #   1. Imports
@@ -28,6 +27,7 @@
 # ---- 1. IMPORTS ---------------------------------------------
 
 import math
+import itertools
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -75,6 +75,14 @@ def matriz_covariancia_dxd(atributos, dados):
     return np.array(tabela)
 
 
+def distancia_euclidiana(x, y):
+    """
+    Distância euclidiana entre dois vetores x e y.
+      x, y : listas ou arrays de mesmo tamanho
+    """
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(x, y)))
+
+
 def gaussiana_d(x, u, sigma):
     """
     Distribuição gaussiana multivariada.
@@ -107,21 +115,33 @@ def gaussiana_d(x, u, sigma):
 def limpar_dados(dados):
     """
     Limpeza inteligente por tipo de coluna (exceto a coluna de classe):
-
-      - Numérico puro         → mantém, preenche NaN com a média da coluna
-
+      - Numérico puro → mantém, preenche NaN com a média da coluna
     """
-
     for col in dados.columns[:-1]:  # não mexe na coluna de classe
         serie = dados[col]
-
-        # já é numérico: preenche NaN com a média
         if pd.api.types.is_numeric_dtype(serie):
             dados[col] = serie.fillna(serie.mean())
             continue
 
     return dados
 
+def normalizar_dados(dados):
+    """
+    Normalização Min-Max por atributo: escala cada coluna para [0, 1].
+    Importante para KNN e DMC, que usam distância euclidiana.
+    O Bayesiano não precisa, mas não é prejudicado por ela.
+    """
+    dados_norm = dados.copy()
+    for col in dados.columns[:-1]:  # não mexe na coluna target
+        x = dados[col].values
+        x_min = min(x)
+        x_max = max(x)
+        amplitude = x_max - x_min
+        if amplitude == 0:
+            dados_norm[col] = 0.0  # atributo constante → sem informação
+        else:
+            dados_norm[col] = [(xi - x_min) / amplitude for xi in x]
+    return dados_norm
 
 def carregar_dados(nome="iris"):
     """
@@ -146,6 +166,7 @@ def carregar_dados(nome="iris"):
 
     dados = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
     dados = limpar_dados(dados)
+    dados = normalizar_dados(dados)
 
     return dados
 
@@ -157,9 +178,9 @@ def gerar_artificial_I(n_por_classe=50, seed=42):
     rng = np.random.default_rng(seed)
 
     classes_config = {
-        "circulo": (1.0, 4.0, 0.5),
+        "circulo":   (1.0, 4.0, 0.5),
         "triangulo": (4.0, 4.0, 0.5),
-        "estrela": (2.0, 2.0, 0.5),
+        "estrela":   (2.0, 2.0, 0.5),
     }
 
     partes = []
@@ -171,20 +192,22 @@ def gerar_artificial_I(n_por_classe=50, seed=42):
 
     return pd.concat(partes).reset_index(drop=True)
 
+
 def split_treino_teste(dados, proporcao_treino):
     """
     Embaralha e divide os dados em treino e teste.
+    Garante ao menos 1 amostra de teste.
     Retorna (dados_treino, dados_teste).
     """
     dados = dados.sample(frac=1).reset_index(drop=True)
     corte = int(proporcao_treino * len(dados))
+    corte = min(corte, len(dados) - 1)  # garante ao menos 1 amostra de teste
     return dados.iloc[:corte], dados.iloc[corte:]
 
 
 # ---- 4. TREINO ----------------------------------------------
 
 
-# MULTIVARIADO
 def treinar(dados_treino, classes):
     """
     Calcula a prioris, médias e matrizes de covariância
@@ -212,12 +235,10 @@ def treinar(dados_treino, classes):
 # ---- 5. CLASSIFICAÇÃO ---------------------------------------
 
 
-# MULTIVARIADO
 def classificar(linha_teste, modelo, classes):
     """
     Calcula a posteriori usando a gaussiana multivariada.
-
-    Retorna classe predita
+    Retorna classe predita.
     """
 
     def verossimilhanca_d(x, classe):
@@ -229,30 +250,26 @@ def classificar(linha_teste, modelo, classes):
         return sum(verossimilhanca_d(x, c) * modelo["a_prioris"][c] for c in classes)
 
     def posteriori_d(x, classe):
-        ev = np.maximum(evidencia_d(x), 1e-9)
+        ev = max(float(evidencia_d(x)), 1e-9)
         return (verossimilhanca_d(x, classe) * modelo["a_prioris"][classe]) / ev
 
-
     probs = {c: posteriori_d(linha_teste, c) for c in classes}
-    resultado = max(probs, key=probs.get)
-
-    return resultado
+    return max(probs, key=probs.get)
 
 
 # ---- 6. AVALIAÇÃO -------------------------------------------
 
 
-# MULTIVARIADO
 def avaliar(dados_teste, modelo, classes):
     """
     Roda o classificador multivariado sobre os dados de teste.
-    Retorna a taxa de acerto (0–100).
+    Retorna (taxa_de_acerto, registros).
     """
     acertos = 0
     registros = []
 
     for _, linha_teste in dados_teste.iterrows():
-        previsto = classificar(linha_teste[:-1], modelo, classes)
+        previsto = classificar(linha_teste[:-1].values, modelo, classes)
         real = linha_teste["target"]
         registros.append((real, previsto))
         if previsto == real:
@@ -264,20 +281,269 @@ def avaliar(dados_teste, modelo, classes):
 
 def realizar(dados, proporcao_treino):
     """
-    Executa uma realização completa do ciclo multivariado:
-    split → treino → avaliação.
-    Retorna a taxa de acerto.
+    Executa uma realização completa: split → treino → avaliação.
+    Retorna (taxa, registros, modelo, dados_treino, dados_teste).
     """
     classes = dados["target"].unique()
-
     dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
     modelo = treinar(dados_treino, classes)
-    return avaliar(dados_teste, modelo, classes)
+    taxa, registros = avaliar(dados_teste, modelo, classes)
+    return taxa, registros, modelo, dados_treino, dados_teste
+
+
+# -- DMC ------------------------------------------------------
+
+def treinar_dmc(dados_treino, classes):
+    """
+    DMC (Distância Mínima ao Centroide).
+    Treino: calcula o centroide (vetor de médias) de cada classe.
+
+    Retorna { classe: [media_a1, media_a2, ..., media_ad] }
+    """
+    atributos = list(dados_treino.columns[:-1])
+    centroides = {}
+    for classe in classes:
+        filtro = dados_treino[dados_treino["target"] == classe]
+        centroides[classe] = [media(filtro[a].values) for a in atributos]
+    return centroides
+
+
+def classificar_dmc(linha_teste, centroides, classes):
+    """
+    DMC: classifica pelo centroide mais próximo (distância euclidiana).
+    """
+    distancias = {
+        c: distancia_euclidiana(linha_teste, centroides[c])
+        for c in classes
+    }
+    return min(distancias, key=distancias.get)
+
+
+def realizar_dmc(dados, proporcao_treino):
+    classes = dados["target"].unique()
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    centroides = treinar_dmc(dados_treino, classes)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_dmc(linha[:-1].values, centroides, classes)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros, centroides, dados_treino, dados_teste
+
+
+# -- KNN ------------------------------------------------------
+
+def classificar_knn(linha_teste, dados_treino, classes, k=5):
+    """
+    KNN (K Vizinhos Mais Próximos).
+    Não há treino — os dados de treino são o próprio modelo.
+
+    Calcula a distância euclidiana para todos os pontos de treino,
+    seleciona os K mais próximos e faz votação majoritária.
+    """
+    atributos = list(dados_treino.columns[:-1])
+
+    # distância de linha_teste para cada ponto de treino
+    distancias = []
+    for _, linha_treino in dados_treino.iterrows():
+        d = distancia_euclidiana(linha_teste, linha_treino[atributos].values)
+        distancias.append((d, linha_treino["target"]))
+
+    # ordena por distância e pega os K menores
+    distancias.sort(key=lambda x: x[0])
+    k_vizinhos = [classe for _, classe in distancias[:k]]
+
+    # votação: classe mais frequente entre os K vizinhos
+    votos = {c: k_vizinhos.count(c) for c in classes}
+    return max(votos, key=votos.get)
+
+
+def realizar_knn(dados, proporcao_treino, k=5):
+    classes = dados["target"].unique()
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_knn(linha[:-1].values, dados_treino, classes, k)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros, dados_treino, dados_teste
 
 
 # ---- 7. VISUALIZAÇÃO ----------------------------------------
-# Filosofia: os gráficos são gerados UMA VEZ ao final de todas
-# as realizações, de forma agregada. Nunca dentro do loop.
+# Filosofia: gráficos gerados UMA VEZ ao final de todas as realizações.
+
+
+def melhor_par_atributos(dados, classes):
+    """
+    Escolhe o par (a1, a2) que maximiza:
+      separabilidade(a1) + separabilidade(a2) - |correlacao(a1, a2)|
+
+    - separabilidade: variância das médias entre classes
+      (quanto mais as classes se afastam, melhor)
+    - correlacao: correlação de Pearson entre os dois atributos
+      (quanto menor a correlação, mais informação independente o par carrega)
+    """
+    atributos = list(dados.columns[:-1])
+
+    def separabilidade(atributo):
+        medias_classes = [
+            media(dados[dados["target"] == c][atributo].values)
+            for c in classes
+        ]
+        return variancia(medias_classes)
+
+    def correlacao_pearson(a1, a2):
+        """
+        Correlação de Pearson autoral entre dois atributos.
+        Retorna valor entre -1 e 1.
+        """
+        x = dados[a1].values
+        y = dados[a2].values
+        cov = covariancia(x, y)
+        # desvio padrão = raiz da variância
+        dp_x = math.sqrt(variancia(x))
+        dp_y = math.sqrt(variancia(y))
+        if dp_x == 0 or dp_y == 0:
+            return 0
+        return cov / (dp_x * dp_y)
+
+    scores_sep = {a: separabilidade(a) for a in atributos}
+
+    # normaliza separabilidade para escala 0-1
+    max_sep = max(scores_sep.values()) or 1
+    scores_sep = {a: v / max_sep for a, v in scores_sep.items()}
+
+    pares = list(itertools.combinations(atributos, 2))
+    scores_pares = {}
+    for a1, a2 in pares:
+        sep  = scores_sep[a1] + scores_sep[a2]
+        corr = abs(correlacao_pearson(a1, a2))  # quanto menor melhor
+        scores_pares[(a1, a2)] = sep - corr     # penaliza correlação alta
+
+    melhor = max(scores_pares, key=scores_pares.get)
+
+    print(f"  Scores dos pares (sep - |corr|):")
+    for par, score in sorted(scores_pares.items(), key=lambda x: -x[1]):
+        print(f"    {par[0]:20s} × {par[1]:20s} : {score:.4f}")
+
+    return melhor
+
+def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributos, dados_treino, dados_teste):
+    """
+    Plota a superfície de decisão para um par de atributos.
+
+    Técnica: classifica cada ponto de uma grade 2D e pinta pela classe
+    vencedora. A fronteira de decisão é desenhada onde a classe muda
+    entre pixels vizinhos (pintada de preto), conforme sugerido pelo professor.
+
+    par_atributos : (nome_col_1, nome_col_2)
+    dados_treino  : DataFrame da realização representativa
+    dados_teste   : DataFrame da realização representativa
+    """
+    a1, a2 = par_atributos
+    atributos = list(dados.columns[:-1])
+    cores = ["#2196F3", "#4CAF50", "#FF5722", "#9C27B0", "#FF9800", "#00BCD4"]
+    cores_classe = {c: cor for c, cor in zip(classes, cores)}
+
+    # -- grade de pixels cobrindo o espaço dos dados --
+    margem = 0.5
+    x1_lin = np.linspace(dados[a1].min() - margem, dados[a1].max() + margem, 200)
+    x2_lin = np.linspace(dados[a2].min() - margem, dados[a2].max() + margem, 200)
+    X1, X2 = np.meshgrid(x1_lin, x2_lin)
+
+    # os atributos fora do par são fixados na média global
+    # para que o classificador (que usa todos os atributos) funcione
+    medias_globais = dados[atributos].mean()
+
+    # -- classifica cada pixel da grade --
+    grade_classes = np.empty(X1.shape, dtype=object)
+    for i in range(X1.shape[0]):
+        for j in range(X1.shape[1]):
+            ponto = medias_globais.copy()
+            ponto[a1] = X1[i, j]
+            ponto[a2] = X2[i, j]
+            grade_classes[i, j] = classificar(ponto.values, modelo, classes)
+
+    # -- converte classes para inteiros para detectar mudanças entre pixels --
+    indice_classe = {c: i for i, c in enumerate(classes)}
+    grade_num = np.vectorize(indice_classe.get)(grade_classes)
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+
+    # -- pinta cada região com a cor da classe --
+    for c in classes:
+        mascara = (grade_classes == c).astype(float)
+        ax.contourf(X1, X2, mascara, levels=[0.5, 1.5],
+                    colors=[cores_classe[c]], alpha=0.25)
+
+    # -- fronteira de decisão: onde a classe muda entre pixels vizinhos --
+    borda_h = np.diff(grade_num, axis=0) != 0  # mudança vertical
+    borda_v = np.diff(grade_num, axis=1) != 0  # mudança horizontal
+
+    borda_x, borda_y = [], []
+    for i, j in zip(*np.where(borda_h)):
+        borda_x.append(x1_lin[j])
+        borda_y.append(x2_lin[i])
+    for i, j in zip(*np.where(borda_v)):
+        borda_x.append(x1_lin[j])
+        borda_y.append(x2_lin[i])
+
+    ax.scatter(borda_x, borda_y, c="black", s=0.3, zorder=2)
+
+    # -- curvas de nível das gaussianas (formato elipsoidal por classe) --
+    i1 = atributos.index(a1)
+    i2 = atributos.index(a2)
+
+    for c in classes:
+        u_full = np.array(modelo["medias"][c])
+        sigma_full = modelo["covariancias"][c]
+
+        # extrai submatriz 2x2 do par escolhido
+        u_2d = np.array([u_full[i1], u_full[i2]])
+        sigma_2d = np.array([
+            [sigma_full[i1, i1], sigma_full[i1, i2]],
+            [sigma_full[i2, i1], sigma_full[i2, i2]]
+        ])
+
+        Z = np.array([
+            [gaussiana_d(np.array([x1, x2]), u_2d, sigma_2d)
+             for x1 in x1_lin]
+            for x2 in x2_lin
+        ])
+
+        ax.contour(X1, X2, Z, levels=4,
+                   colors=[cores_classe[c]], linewidths=1.5, zorder=3)
+
+    # -- pontos de treino (círculo) e teste (X) por classe --
+    for c in classes:
+        cor = cores_classe[c]
+        t = dados_treino[dados_treino["target"] == c]
+        ts = dados_teste[dados_teste["target"] == c]
+        ax.scatter(t[a1], t[a2], color=cor, marker="o", s=25,
+                   edgecolors="white", linewidths=0.4,
+                   label=f"{c} treino", zorder=4)
+        ax.scatter(ts[a1], ts[a2], color=cor, marker="X", s=60,
+                   edgecolors="black", linewidths=0.5,
+                   label=f"{c} teste", zorder=5)
+
+    ax.set_xlabel(a1)
+    ax.set_ylabel(a2)
+    ax.set_title(f"Superfície de Decisão — {nome_dataset}\n({a1} × {a2})")
+    ax.legend(fontsize=8, loc="upper left", markerscale=1.2)
+    plt.tight_layout()
+    plt.show()
 
 
 def plotar_matriz_confusao(nome_dataset, registros, classes):
@@ -307,15 +573,9 @@ def plotar_matriz_confusao(nome_dataset, registros, classes):
 
     for i in range(n):
         for j in range(n):
-            ax.text(
-                j,
-                i,
-                str(matriz[i][j]),
-                ha="center",
-                va="center",
-                fontsize=12,
-                color="white" if matriz[i][j] > matriz.max() * 0.5 else "black",
-            )
+            ax.text(j, i, str(matriz[i][j]),
+                    ha="center", va="center", fontsize=12,
+                    color="white" if matriz[i][j] > matriz.max() * 0.5 else "black")
 
     plt.tight_layout()
     plt.show()
@@ -323,8 +583,11 @@ def plotar_matriz_confusao(nome_dataset, registros, classes):
 
 # ---- 8. EXECUÇÃO PRINCIPAL ----------------------------------
 
+# datasets para os quais será plotada a superfície de decisão
+DATASETS_COM_SUPERFICIE = {"iris", "vertebral_column", "artificial_I"}
 
-def executar_dataset(nome_dataset):
+
+def executar_dataset(nome_dataset, k_knn=5):
     PROPORCAO_TREINO = 0.8
     N_REALIZACOES = 25
 
@@ -333,21 +596,46 @@ def executar_dataset(nome_dataset):
     print("=" * 50)
 
     dados = carregar_dados(nome_dataset)
-    historico = []
-
-    for i in range(N_REALIZACOES):
-        taxa_de_acerto, registros = realizar(dados, PROPORCAO_TREINO)
-        historico.append((taxa_de_acerto, registros))
-
-    acuracia_media = sum(h[0] for h in historico) / N_REALIZACOES
-
-    print(f"\nAcurácia média ({N_REALIZACOES} realizações): {acuracia_media:.2f}%")
-    print(f"\nDesvio padrão: {math.sqrt(variancia([h[0] for h in historico])):.2f}")
-
-    # Plotar matriz de confusão da realização mais representativa (mais próxima da média)
     classes = dados["target"].unique()
-    realizacao_representativa = min(historico, key=lambda h: abs(h[0] - acuracia_media))
-    plotar_matriz_confusao(nome_dataset, realizacao_representativa[1], classes)
+
+    historico_bayes = []
+    historico_dmc   = []
+    historico_knn   = []
+
+    for _ in range(N_REALIZACOES):
+        historico_bayes.append(realizar(dados, PROPORCAO_TREINO))
+        historico_dmc.append(realizar_dmc(dados, PROPORCAO_TREINO))
+        historico_knn.append(realizar_knn(dados, PROPORCAO_TREINO, k=k_knn))
+
+    def resumo(historico, nome):
+        taxas = [h[0] for h in historico]
+        acc   = media(taxas)
+        dev   = math.sqrt(variancia(taxas))
+        print(f"  {nome:12s}: {acc:.2f}% ± {dev:.2f}%")
+        return acc, dev
+
+    print(f"\nAcurácia média ({N_REALIZACOES} realizações):")
+    acc_bayes, dev_bayes = resumo(historico_bayes, "Bayesiano")
+    acc_dmc,   dev_dmc   = resumo(historico_dmc,   "DMC")
+    acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
+
+    # realização mais próxima da média de cada classificador
+    rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acc_bayes))
+    rep_dmc   = min(historico_dmc,   key=lambda h: abs(h[0] - acc_dmc))
+
+    # matriz de confusão do Bayesiano (realização representativa)
+    plotar_matriz_confusao(nome_dataset, rep_bayes[1], classes)
+
+    # superfície de decisão (só para os datasets pedidos pelo professor)
+    if nome_dataset in DATASETS_COM_SUPERFICIE:
+        par = melhor_par_atributos(dados, classes)
+        print(f"\nPar escolhido para superfície de decisão: {par}")
+        print(f"  (critério: maior variância das médias entre classes)")
+        taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_bayes
+        plotar_superficie_decisao(
+            nome_dataset, dados, modelo_rep, classes,
+            par, treino_rep, teste_rep
+        )
 
 
 if __name__ == "__main__":
