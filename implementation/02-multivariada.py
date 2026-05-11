@@ -387,58 +387,47 @@ def realizar_knn(dados, proporcao_treino, k=5):
 
 def melhor_par_atributos(dados, classes):
     """
-    Escolhe o par (a1, a2) que maximiza:
-      separabilidade(a1) + separabilidade(a2) - |correlacao(a1, a2)|
-
-    - separabilidade: variância das médias entre classes
-      (quanto mais as classes se afastam, melhor)
-    - correlacao: correlação de Pearson entre os dois atributos
-      (quanto menor a correlação, mais informação independente o par carrega)
+    Escolhe o par (a1, a2) que maximize a separação real das massas de dados.
+    Critério: (Variância entre médias de classes) / (Média das variâncias internas).
+    Isso prioriza eixos onde as classes estão longe umas das outras e são compactas.
     """
     atributos = list(dados.columns[:-1])
+    
+    def score_separabilidade(atrib):
+        # Médias de cada classe para este atributo
+        medias_por_classe = [dados[dados["target"] == c][atrib].mean() for c in classes]
+        # Variância das médias (o quanto os centros estão longe)
+        var_entre = variancia(medias_por_classe)
+        
+        # Variância dentro de cada classe (o quanto a nuvem é 'espalhada')
+        var_dentro = media([variancia(dados[dados["target"] == c][atrib].values) for c in classes])
+        
+        # Razão de Fisher simplificada: quanto maior, mais 'separado' e 'compacto'
+        return var_entre / (var_dentro + 1e-6)
 
-    def separabilidade(atributo):
-        medias_classes = [
-            media(dados[dados["target"] == c][atributo].values)
-            for c in classes
-        ]
-        return variancia(medias_classes)
-
-    def correlacao_pearson(a1, a2):
-        """
-        Correlação de Pearson autoral entre dois atributos.
-        Retorna valor entre -1 e 1.
-        """
-        x = dados[a1].values
-        y = dados[a2].values
-        cov = covariancia(x, y)
-        # desvio padrão = raiz da variância
-        dp_x = math.sqrt(variancia(x))
-        dp_y = math.sqrt(variancia(y))
-        if dp_x == 0 or dp_y == 0:
-            return 0
-        return cov / (dp_x * dp_y)
-
-    scores_sep = {a: separabilidade(a) for a in atributos}
-
-    # normaliza separabilidade para escala 0-1
-    max_sep = max(scores_sep.values()) or 1
-    scores_sep = {a: v / max_sep for a, v in scores_sep.items()}
-
+    # Calculamos o score individual de cada atributo
+    scores_individuais = {a: score_separabilidade(a) for a in atributos}
+    
+    # O melhor par será a combinação dos dois atributos com maiores scores individuais
+    # pois eles oferecem as melhores direções de separação independentes
     pares = list(itertools.combinations(atributos, 2))
     scores_pares = {}
+    
     for a1, a2 in pares:
-        sep  = scores_sep[a1] + scores_sep[a2]
-        corr = abs(correlacao_pearson(a1, a2))  # quanto menor melhor
-        scores_pares[(a1, a2)] = sep - corr     # penaliza correlação alta
+        # O score do par é a soma da capacidade de separação de cada eixo
+        scores_pares[(a1, a2)] = scores_individuais[a1] + scores_individuais[a2]
 
     melhor = max(scores_pares, key=scores_pares.get)
 
-    print(f"  Scores dos pares (sep - |corr|):")
+    print(f"  Scores de separabilidade (Fisher-like):")
     for par, score in sorted(scores_pares.items(), key=lambda x: -x[1]):
         print(f"    {par[0]:20s} × {par[1]:20s} : {score:.4f}")
 
     return melhor
+
+
+
+
 
 def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributos, dados_treino, dados_teste):
     """
@@ -639,8 +628,8 @@ def executar_dataset(nome_dataset, k_knn=5):
 
 
 if __name__ == "__main__":
-    executar_dataset("iris")
+    # executar_dataset("iris")
     executar_dataset("vertebral_column")
-    executar_dataset("breast_cancer")
-    executar_dataset("dermatology")
-    executar_dataset("artificial_I")
+    # executar_dataset("breast_cancer")
+    # executar_dataset("dermatology")
+    # executar_dataset("artificial_I")
