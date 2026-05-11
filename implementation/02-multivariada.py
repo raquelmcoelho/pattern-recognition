@@ -1,9 +1,15 @@
 # =============================================================
-# NAIVE BAYES - CLASSIFICADOR MULTIVARIADO
+# CLASSIFICADOR BAYESIANO GAUSSIANO MULTIVARIADO
 # =============================================================
 # Aluna: Raquel Maciel Coelho de Sousa
-# Dataset: Iris
-# Descrição: Implementação do classificador Naive Bayes com
+# Dataset:
+#   1. Flor Iris
+#   2. Vertebral Column
+#   3. Breast Cancer
+#   4. Dermatology
+#   5. Artificial I
+#
+# Descrição: Implementação do classificador Bayesiano Gaussiano com
 #            análise de acurácia utilizando todos os atributos
 #            (multivariado).
 #
@@ -26,12 +32,14 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from ucimlrepo import fetch_ucirepo
 
 # ---- 2. FUNÇÕES MATEMÁTICAS ---------------------------------
 
 
 def media(x):
     return sum(x) / len(x)
+
 
 def variancia(x):
     u = media(x)
@@ -60,11 +68,12 @@ def matriz_covariancia_dxd(atributos, dados):
     tabela = np.zeros((len(atributos), len(atributos)))
     for i, a in enumerate(atributos):
         for j, b in enumerate(atributos):
-            if(j >= i):
+            if j >= i:
                 tabela[i][j] = covariancia(dados[a].values, dados[b].values)
                 tabela[j][i] = tabela[i][j]  # simetria
 
     return np.array(tabela)
+
 
 def gaussiana_d(x, u, sigma):
     """
@@ -76,11 +85,18 @@ def gaussiana_d(x, u, sigma):
     """
     x, u = np.array(x), np.array(u)
     d = len(x)
-    det = np.linalg.det(sigma)
-    det = np.maximum(det, 1e-9)
-    inv = np.linalg.inv(sigma)
+
+    # regularização: evita matriz singular somando epsilon na diagonal
+    epsilon = 1e-6
+    sigma_reg = sigma + epsilon * np.eye(d)
+
+    det = np.linalg.det(sigma_reg)
+    det = max(float(det), 1e-9)
+    inv = np.linalg.inv(sigma_reg)
+
     diff = x - u
     expoente = -0.5 * (diff @ inv @ diff)
+    expoente = float(np.clip(expoente, -500, 500))  # evita overflow no exp
     denominador = (2 * np.pi) ** (d / 2) * np.sqrt(det)
     return (1 / denominador) * np.exp(float(expoente))
 
@@ -88,9 +104,72 @@ def gaussiana_d(x, u, sigma):
 # ---- 3. DADOS: CARREGAMENTO E SPLIT -------------------------
 
 
-def carregar_dados(nome="iris"):
-    return sns.load_dataset(nome)
+def limpar_dados(dados):
+    """
+    Limpeza inteligente por tipo de coluna (exceto a coluna de classe):
 
+      - Numérico puro         → mantém, preenche NaN com a média da coluna
+
+    """
+
+    for col in dados.columns[:-1]:  # não mexe na coluna de classe
+        serie = dados[col]
+
+        # já é numérico: preenche NaN com a média
+        if pd.api.types.is_numeric_dtype(serie):
+            dados[col] = serie.fillna(serie.mean())
+            continue
+
+    return dados
+
+
+def carregar_dados(nome="iris"):
+    """
+    Carrega e limpa um dataset pelo nome.
+    Suportados: "iris", "vertebral_column", "breast_cancer", "dermatology", "artificial_I"
+    A coluna de classe é sempre padronizada como "target".
+    """
+    if nome == "artificial_I":
+        return gerar_artificial_I()
+
+    ids = {
+        "breast_cancer": 17,
+        "dermatology": 33,
+        "iris": 53,
+        "vertebral_column": 212,
+    }
+
+    ds = fetch_ucirepo(id=ids[nome])
+    X = ds.data.features
+    y = ds.data.targets
+    y.columns = ["target"]
+
+    dados = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
+    dados = limpar_dados(dados)
+
+    return dados
+
+
+def gerar_artificial_I(n_por_classe=50, seed=42):
+    """
+    Gera dataset Artificial I com 3 classes gaussianas 2D.
+    """
+    rng = np.random.default_rng(seed)
+
+    classes_config = {
+        "circulo": (1.0, 4.0, 0.5),
+        "triangulo": (4.0, 4.0, 0.5),
+        "estrela": (2.0, 2.0, 0.5),
+    }
+
+    partes = []
+    for classe, (mx, my, dp) in classes_config.items():
+        x1 = rng.normal(mx, dp, n_por_classe)
+        x2 = rng.normal(my, dp, n_por_classe)
+        df = pd.DataFrame({"x1": x1, "x2": x2, "target": classe})
+        partes.append(df)
+
+    return pd.concat(partes).reset_index(drop=True)
 
 def split_treino_teste(dados, proporcao_treino):
     """
@@ -104,8 +183,9 @@ def split_treino_teste(dados, proporcao_treino):
 
 # ---- 4. TREINO ----------------------------------------------
 
+
 # MULTIVARIADO
-def treinar_multivariado(dados_treino, classes):
+def treinar(dados_treino, classes):
     """
     Calcula a prioris, médias e matrizes de covariância
     para cada classe.
@@ -121,7 +201,7 @@ def treinar_multivariado(dados_treino, classes):
     atributos = list(dados_treino.columns[:-1])
 
     for classe in classes:
-        filtro = dados_treino[dados_treino["species"] == classe]
+        filtro = dados_treino[dados_treino["target"] == classe]
         modelo["a_prioris"][classe] = len(filtro) / len(dados_treino)
         modelo["medias"][classe] = [media(filtro[a].values) for a in atributos]
         modelo["covariancias"][classe] = matriz_covariancia_dxd(atributos, filtro)
@@ -133,7 +213,7 @@ def treinar_multivariado(dados_treino, classes):
 
 
 # MULTIVARIADO
-def classificar_multivariado(linha_teste, modelo, classes):
+def classificar(linha_teste, modelo, classes):
     """
     Calcula a posteriori usando a gaussiana multivariada.
 
@@ -146,12 +226,10 @@ def classificar_multivariado(linha_teste, modelo, classes):
         return gaussiana_d(x, u, sigma)
 
     def evidencia_d(x):
-        return sum(
-            verossimilhanca_d(x, c) * modelo["a_prioris"][c] for c in classes
-        )
+        return sum(verossimilhanca_d(x, c) * modelo["a_prioris"][c] for c in classes)
 
     def posteriori_d(x, classe):
-        ev = max(evidencia_d(x), 1e-9)
+        ev = np.maximum(evidencia_d(x), 1e-9)
         return (verossimilhanca_d(x, classe) * modelo["a_prioris"][classe]) / ev
 
 
@@ -163,34 +241,38 @@ def classificar_multivariado(linha_teste, modelo, classes):
 
 # ---- 6. AVALIAÇÃO -------------------------------------------
 
+
 # MULTIVARIADO
-def avaliar_multivariado(dados_teste, modelo, classes):
+def avaliar(dados_teste, modelo, classes):
     """
     Roda o classificador multivariado sobre os dados de teste.
     Retorna a taxa de acerto (0–100).
     """
     acertos = 0
+    registros = []
 
     for _, linha_teste in dados_teste.iterrows():
-        resultado = classificar_multivariado(linha_teste[:-1], modelo, classes)
-        if resultado == linha_teste["species"]:
+        previsto = classificar(linha_teste[:-1], modelo, classes)
+        real = linha_teste["target"]
+        registros.append((real, previsto))
+        if previsto == real:
             acertos += 1
 
-    return (acertos / len(dados_teste)) * 100
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros
 
 
-
-def realizar_multivariado(dados, proporcao_treino):
+def realizar(dados, proporcao_treino):
     """
     Executa uma realização completa do ciclo multivariado:
     split → treino → avaliação.
     Retorna a taxa de acerto.
     """
-    classes = dados["species"].unique()
+    classes = dados["target"].unique()
 
     dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
-    modelo = treinar_multivariado(dados_treino, classes)
-    return avaliar_multivariado(dados_teste, modelo, classes)
+    modelo = treinar(dados_treino, classes)
+    return avaliar(dados_teste, modelo, classes)
 
 
 # ---- 7. VISUALIZAÇÃO ----------------------------------------
@@ -198,44 +280,79 @@ def realizar_multivariado(dados, proporcao_treino):
 # as realizações, de forma agregada. Nunca dentro do loop.
 
 
-# MULTIVARIADA
-def plotar_gaussianas_multivariado(dados, proporcao_treino):
+def plotar_matriz_confusao(nome_dataset, registros, classes):
     """
-    Plota as distribuição da gaussiana aprendida,
-    treinando UMA VEZ (modelo representativo).
-    Não é chamado dentro do loop de realizações.
+    registros: lista de tuplas (real, previsto)
     """
-    pass
+    n = len(classes)
+    indice = {c: i for i, c in enumerate(classes)}
+    matriz = np.zeros((n, n), dtype=int)
 
-def plotar_acuracias_multivariado(historico_taxas_acerto):
-    """
-    historico_taxas_acerto: lista [taxa1, taxa2, ..., taxaN]
-    """
-    pass
+    for real, previsto in registros:
+        i = indice[real]
+        j = indice[previsto]
+        matriz[i][j] += 1
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    im = ax.imshow(matriz, cmap="Blues")
+
+    ax.set_xticks(range(n))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(classes, fontsize=10)
+    ax.set_yticklabels(classes, fontsize=10)
+    ax.set_xlabel("Previsto")
+    ax.set_ylabel("Real")
+    ax.set_title(f"Matriz de Confusão: {nome_dataset}")
+    plt.colorbar(im, ax=ax)
+
+    for i in range(n):
+        for j in range(n):
+            ax.text(
+                j,
+                i,
+                str(matriz[i][j]),
+                ha="center",
+                va="center",
+                fontsize=12,
+                color="white" if matriz[i][j] > matriz.max() * 0.5 else "black",
+            )
+
+    plt.tight_layout()
+    plt.show()
+
 
 # ---- 8. EXECUÇÃO PRINCIPAL ----------------------------------
 
-if __name__ == "__main__":
+
+def executar_dataset(nome_dataset):
     PROPORCAO_TREINO = 0.8
-    N_REALIZACOES = 100
-
-    dados = carregar_dados()
+    N_REALIZACOES = 25
 
     print("=" * 50)
-    print("MULTIVARIADO")
+    print("EXECUTANDO DATASET:", nome_dataset)
     print("=" * 50)
 
+    dados = carregar_dados(nome_dataset)
     historico = []
 
     for i in range(N_REALIZACOES):
-        taxa_de_acerto = realizar_multivariado(dados, PROPORCAO_TREINO)
-        historico.append(taxa_de_acerto)
+        taxa_de_acerto, registros = realizar(dados, PROPORCAO_TREINO)
+        historico.append((taxa_de_acerto, registros))
 
-    acuracia_media =  sum(historico) / N_REALIZACOES
+    acuracia_media = sum(h[0] for h in historico) / N_REALIZACOES
 
     print(f"\nAcurácia média ({N_REALIZACOES} realizações): {acuracia_media:.2f}%")
-    print(f"\nDesvio padrão: {math.sqrt(variancia(historico)):.2f}")
+    print(f"\nDesvio padrão: {math.sqrt(variancia([h[0] for h in historico])):.2f}")
 
-    # Gráficos
-    plotar_acuracias_multivariado(historico)
-    plotar_gaussianas_multivariado(dados, PROPORCAO_TREINO)
+    # Plotar matriz de confusão da realização mais representativa (mais próxima da média)
+    classes = dados["target"].unique()
+    realizacao_representativa = min(historico, key=lambda h: abs(h[0] - acuracia_media))
+    plotar_matriz_confusao(nome_dataset, realizacao_representativa[1], classes)
+
+
+if __name__ == "__main__":
+    executar_dataset("iris")
+    executar_dataset("vertebral_column")
+    executar_dataset("breast_cancer")
+    executar_dataset("dermatology")
+    executar_dataset("artificial_I")
