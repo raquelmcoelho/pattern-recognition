@@ -36,7 +36,6 @@ from ucimlrepo import fetch_ucirepo
 
 # ---- 2. FUNÇÕES MATEMÁTICAS ---------------------------------
 
-
 def media(x):
     return sum(x) / len(x)
 
@@ -47,7 +46,6 @@ def variancia(x):
 
 
 def covariancia(x1, x2):
-    """Covariância entre dois atributos."""
     u1, u2 = media(x1), media(x2)
     return sum((a - u1) * (b - u2) for a, b in zip(x1, x2)) / len(x1)
 
@@ -76,10 +74,6 @@ def matriz_covariancia_dxd(atributos, dados):
 
 
 def distancia_euclidiana(x, y):
-    """
-    Distância euclidiana entre dois vetores x e y.
-      x, y : listas ou arrays de mesmo tamanho
-    """
     return math.sqrt(sum((a - b) ** 2 for a, b in zip(x, y)))
 
 
@@ -111,39 +105,19 @@ def gaussiana_d(x, u, sigma):
 
 # ---- 3. DADOS: CARREGAMENTO E SPLIT -------------------------
 
-
 def limpar_dados(dados):
     """
-    Limpeza inteligente por tipo de coluna (exceto a coluna de classe):
-      - Numérico puro → mantém, preenche NaN com a média da coluna
+    Preencher dados faltantes com média da coluna (apenas para colunas numéricas).
     """
     for col in dados.columns[:-1]:  # não mexe na coluna de classe
         serie = dados[col]
         if pd.api.types.is_numeric_dtype(serie):
-            dados[col] = serie.fillna(serie.mean())
+            dados[col] = serie.fillna(media(serie))
             continue
 
     return dados
 
-def normalizar_dados(dados):
-    """
-    Normalização Min-Max por atributo: escala cada coluna para [0, 1].
-    Importante para KNN e DMC, que usam distância euclidiana.
-    O Bayesiano não precisa, mas não é prejudicado por ela.
-    """
-    dados_norm = dados.copy()
-    for col in dados.columns[:-1]:  # não mexe na coluna target
-        x = dados[col].values
-        x_min = min(x)
-        x_max = max(x)
-        amplitude = x_max - x_min
-        if amplitude == 0:
-            dados_norm[col] = 0.0  # atributo constante → sem informação
-        else:
-            dados_norm[col] = [(xi - x_min) / amplitude for xi in x]
-    return dados_norm
-
-def carregar_dados(nome="iris"):
+def carregar_dados(nome):
     """
     Carrega e limpa um dataset pelo nome.
     Suportados: "iris", "vertebral_column", "breast_cancer", "dermatology", "artificial_I"
@@ -166,15 +140,11 @@ def carregar_dados(nome="iris"):
 
     dados = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
     dados = limpar_dados(dados)
-    dados = normalizar_dados(dados)
 
     return dados
 
 
 def gerar_artificial_I(n_por_classe=50, seed=42):
-    """
-    Gera dataset Artificial I com 3 classes gaussianas 2D.
-    """
     rng = np.random.default_rng(seed)
 
     classes_config = {
@@ -196,7 +166,6 @@ def gerar_artificial_I(n_por_classe=50, seed=42):
 def split_treino_teste(dados, proporcao_treino):
     """
     Embaralha e divide os dados em treino e teste.
-    Garante ao menos 1 amostra de teste.
     Retorna (dados_treino, dados_teste).
     """
     dados = dados.sample(frac=1).reset_index(drop=True)
@@ -207,8 +176,7 @@ def split_treino_teste(dados, proporcao_treino):
 
 # ---- 4. TREINO ----------------------------------------------
 
-
-def treinar(dados_treino, classes):
+def treinar_bayes(dados_treino, classes):
     """
     Calcula a prioris, médias e matrizes de covariância
     para cada classe.
@@ -234,8 +202,7 @@ def treinar(dados_treino, classes):
 
 # ---- 5. CLASSIFICAÇÃO ---------------------------------------
 
-
-def classificar(linha_teste, modelo, classes):
+def classificar_bayes(linha_teste, modelo, classes):
     """
     Calcula a posteriori usando a gaussiana multivariada.
     Retorna classe predita.
@@ -260,34 +227,26 @@ def classificar(linha_teste, modelo, classes):
 # ---- 6. AVALIAÇÃO -------------------------------------------
 
 
-def avaliar(dados_teste, modelo, classes):
-    """
-    Roda o classificador multivariado sobre os dados de teste.
-    Retorna (taxa_de_acerto, registros).
-    """
-    acertos = 0
-    registros = []
-
-    for _, linha_teste in dados_teste.iterrows():
-        previsto = classificar(linha_teste[:-1].values, modelo, classes)
-        real = linha_teste["target"]
-        registros.append((real, previsto))
-        if previsto == real:
-            acertos += 1
-
-    taxa = (acertos / len(dados_teste)) * 100
-    return taxa, registros
-
-
-def realizar(dados, proporcao_treino):
+def realizar_bayes(dados, proporcao_treino):
     """
     Executa uma realização completa: split → treino → avaliação.
     Retorna (taxa, registros, modelo, dados_treino, dados_teste).
     """
     classes = dados["target"].unique()
     dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
-    modelo = treinar(dados_treino, classes)
-    taxa, registros = avaliar(dados_teste, modelo, classes)
+    modelo = treinar_bayes(dados_treino, classes)
+
+    acertos = 0
+    registros = []
+    for _, linha_teste in dados_teste.iterrows():
+        previsto = classificar_bayes(linha_teste[:-1].values, modelo, classes)
+        real = linha_teste["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+
     return taxa, registros, modelo, dados_treino, dados_teste
 
 
@@ -388,34 +347,48 @@ def realizar_knn(dados, proporcao_treino, k=5):
 def melhor_par_atributos(dados, classes):
     """
     Escolhe o par (a1, a2) que maximize a separação real das massas de dados.
-    Critério: (Variância entre médias de classes) / (Média das variâncias internas).
+    Critério: (fisher(a1) + fisher(a2)) (1 - redundância)
+    
+    Fisher: variância_fora(ai)  
+            ------------------   
+            variância _dentro(ai)
+
     Isso prioriza eixos onde as classes estão longe umas das outras e são compactas.
+
+    - variância fora: variância das médias entre classes, distancia dos centros
+      (quanto mais as classes se afastam, melhor)
+    - variância dentro: média das variâncias dentro de cada classe, espalhamento da nuvem
+      (quanto mais compactas, melhor)
+    - redundância: correlação de Pearson entre os atributos 
+      (quanto mais correlacionados, mais redundantes, pior)
     """
     atributos = list(dados.columns[:-1])
     
-    def score_separabilidade(atrib):
-        # Médias de cada classe para este atributo
-        medias_por_classe = [dados[dados["target"] == c][atrib].mean() for c in classes]
-        # Variância das médias (o quanto os centros estão longe)
-        var_entre = variancia(medias_por_classe)
-        
-        # Variância dentro de cada classe (o quanto a nuvem é 'espalhada')
-        var_dentro = media([variancia(dados[dados["target"] == c][atrib].values) for c in classes])
-        
-        # Razão de Fisher simplificada: quanto maior, mais 'separado' e 'compacto'
-        return var_entre / (var_dentro + 1e-6)
+    def fisher(atributo):
+        filtro = [dados[dados["target"] == c][atributo].values for c in classes]
+        medias_por_classe = [media(f) for f in filtro]
+        variancia_fora = variancia(medias_por_classe)
+        variancia_dentro = media([variancia(f) for f in filtro])
 
-    # Calculamos o score individual de cada atributo
-    scores_individuais = {a: score_separabilidade(a) for a in atributos}
+        return variancia_fora /(variancia_dentro + 1e-6)
+
+    def correlacao_pearson(a1, a2):
+        x = dados[a1].values
+        y = dados[a2].values
+        cov = covariancia(x, y)
+        dp1 = math.sqrt(variancia(x))
+        dp2 = math.sqrt(variancia(y))
+        if dp1 == 0 or dp2 == 0:
+            return 0
+        return abs(cov / (dp1 * dp2))
     
-    # O melhor par será a combinação dos dois atributos com maiores scores individuais
-    # pois eles oferecem as melhores direções de separação independentes
+    fishers = {a: fisher(a) for a in atributos}
     pares = list(itertools.combinations(atributos, 2))
     scores_pares = {}
     
     for a1, a2 in pares:
-        # O score do par é a soma da capacidade de separação de cada eixo
-        scores_pares[(a1, a2)] = scores_individuais[a1] + scores_individuais[a2]
+        redundancia = correlacao_pearson(a1, a2)
+        scores_pares[(a1, a2)] = (fishers[a1] + fishers[a2]) * (1 - redundancia)
 
     melhor = max(scores_pares, key=scores_pares.get)
 
@@ -425,10 +398,6 @@ def melhor_par_atributos(dados, classes):
 
     return melhor
 
-
-
-
-
 def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributos, dados_treino, dados_teste):
     """
     Plota a superfície de decisão para um par de atributos.
@@ -437,7 +406,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
     vencedora. A fronteira de decisão é desenhada onde a classe muda
     entre pixels vizinhos (pintada de preto), conforme sugerido pelo professor.
 
-    par_atributos : (nome_col_1, nome_col_2)
+    par_atributos : (atributo 1, atributo 2)
     dados_treino  : DataFrame da realização representativa
     dados_teste   : DataFrame da realização representativa
     """
@@ -446,7 +415,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
     cores = ["#2196F3", "#4CAF50", "#FF5722", "#9C27B0", "#FF9800", "#00BCD4"]
     cores_classe = {c: cor for c, cor in zip(classes, cores)}
 
-    # -- grade de pixels cobrindo o espaço dos dados --
+    # grade de pixels cobrindo o espaço dos dados
     margem = 0.5
     x1_lin = np.linspace(dados[a1].min() - margem, dados[a1].max() + margem, 200)
     x2_lin = np.linspace(dados[a2].min() - margem, dados[a2].max() + margem, 200)
@@ -454,30 +423,30 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
 
     # os atributos fora do par são fixados na média global
     # para que o classificador (que usa todos os atributos) funcione
-    medias_globais = dados[atributos].mean()
+    medias_globais = dados[atributos].apply(media)
 
-    # -- classifica cada pixel da grade --
+    # classifica cada pixel da grade
     grade_classes = np.empty(X1.shape, dtype=object)
     for i in range(X1.shape[0]):
         for j in range(X1.shape[1]):
             ponto = medias_globais.copy()
             ponto[a1] = X1[i, j]
             ponto[a2] = X2[i, j]
-            grade_classes[i, j] = classificar(ponto.values, modelo, classes)
+            grade_classes[i, j] = classificar_bayes(ponto.values, modelo, classes)
 
-    # -- converte classes para inteiros para detectar mudanças entre pixels --
+    # converte classes para inteiros para detectar mudanças entre pixels
     indice_classe = {c: i for i, c in enumerate(classes)}
     grade_num = np.vectorize(indice_classe.get)(grade_classes)
 
     fig, ax = plt.subplots(figsize=(9, 7))
 
-    # -- pinta cada região com a cor da classe --
+    # pinta cada região com a cor da classe
     for c in classes:
         mascara = (grade_classes == c).astype(float)
         ax.contourf(X1, X2, mascara, levels=[0.5, 1.5],
                     colors=[cores_classe[c]], alpha=0.25)
 
-    # -- fronteira de decisão: onde a classe muda entre pixels vizinhos --
+    # fronteira de decisão: onde a classe muda entre pixels vizinhos
     borda_h = np.diff(grade_num, axis=0) != 0  # mudança vertical
     borda_v = np.diff(grade_num, axis=1) != 0  # mudança horizontal
 
@@ -491,7 +460,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
 
     ax.scatter(borda_x, borda_y, c="black", s=0.3, zorder=2)
 
-    # -- curvas de nível das gaussianas (formato elipsoidal por classe) --
+    # curvas de nível das gaussianas (formato elipsoidal por classe)
     i1 = atributos.index(a1)
     i2 = atributos.index(a2)
 
@@ -515,7 +484,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
         ax.contour(X1, X2, Z, levels=4,
                    colors=[cores_classe[c]], linewidths=1.5, zorder=3)
 
-    # -- pontos de treino (círculo) e teste (X) por classe --
+    # pontos de treino (círculo) e teste (X) por classe --
     for c in classes:
         cor = cores_classe[c]
         t = dados_treino[dados_treino["target"] == c]
@@ -572,8 +541,7 @@ def plotar_matriz_confusao(nome_dataset, registros, classes):
 
 # ---- 8. EXECUÇÃO PRINCIPAL ----------------------------------
 
-# datasets para os quais será plotada a superfície de decisão
-DATASETS_COM_SUPERFICIE = {"iris", "vertebral_column", "artificial_I"}
+DATASETS_COM_SUPERFICIE_DECISAO = {"iris", "vertebral_column", "artificial_I"}
 
 
 def executar_dataset(nome_dataset, k_knn=5):
@@ -592,34 +560,32 @@ def executar_dataset(nome_dataset, k_knn=5):
     historico_knn   = []
 
     for _ in range(N_REALIZACOES):
-        historico_bayes.append(realizar(dados, PROPORCAO_TREINO))
+        historico_bayes.append(realizar_bayes(dados, PROPORCAO_TREINO))
         historico_dmc.append(realizar_dmc(dados, PROPORCAO_TREINO))
         historico_knn.append(realizar_knn(dados, PROPORCAO_TREINO, k=k_knn))
 
     def resumo(historico, nome):
         taxas = [h[0] for h in historico]
-        acc   = media(taxas)
-        dev   = math.sqrt(variancia(taxas))
-        print(f"  {nome:12s}: {acc:.2f}% ± {dev:.2f}%")
-        return acc, dev
+        acuracia = media(taxas)
+        desvio_padrao = math.sqrt(variancia(taxas))
+        print(f"  {nome:12s}: {acuracia:.2f}% ± {desvio_padrao:.2f}%")
+        return acuracia, desvio_padrao
 
     print(f"\nAcurácia média ({N_REALIZACOES} realizações):")
-    acc_bayes, dev_bayes = resumo(historico_bayes, "Bayesiano")
-    acc_dmc,   dev_dmc   = resumo(historico_dmc,   "DMC")
-    acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
+    acuracia_bayes, desvio_padrao_bayes = resumo(historico_bayes, "Bayesiano")
+    acuracia_dmc,   desvio_padrao_dmc   = resumo(historico_dmc,   "DMC")
+    acuracia_knn,   desvio_padrao_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
 
     # realização mais próxima da média de cada classificador
-    rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acc_bayes))
-    rep_dmc   = min(historico_dmc,   key=lambda h: abs(h[0] - acc_dmc))
+    rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acuracia_bayes))
 
     # matriz de confusão do Bayesiano (realização representativa)
     plotar_matriz_confusao(nome_dataset, rep_bayes[1], classes)
 
-    # superfície de decisão (só para os datasets pedidos pelo professor)
-    if nome_dataset in DATASETS_COM_SUPERFICIE:
+    # superfície de decisão
+    if nome_dataset in DATASETS_COM_SUPERFICIE_DECISAO:
         par = melhor_par_atributos(dados, classes)
         print(f"\nPar escolhido para superfície de decisão: {par}")
-        print(f"  (critério: maior variância das médias entre classes)")
         taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_bayes
         plotar_superficie_decisao(
             nome_dataset, dados, modelo_rep, classes,
@@ -628,8 +594,8 @@ def executar_dataset(nome_dataset, k_knn=5):
 
 
 if __name__ == "__main__":
-    # executar_dataset("iris")
+    executar_dataset("iris")
+    executar_dataset("artificial_I")
     executar_dataset("vertebral_column")
-    # executar_dataset("breast_cancer")
-    # executar_dataset("dermatology")
-    # executar_dataset("artificial_I")
+    executar_dataset("breast_cancer")
+    executar_dataset("dermatology")
