@@ -1,0 +1,97 @@
+==================================================
+EXECUTANDO DATASET: iris
+==================================================
+
+Acurácia média (25 realizações):
+  Bayesiano      : 97.47% ± 3.02%
+  Naive Bayes    : 94.80% ± 4.33%
+  DMC            : 90.93% ± 4.95%
+  KNN (k=5)      : 96.27% ± 2.88%
+  Scores de separabilidade (Fisher-like):
+    petal length         × petal width          : 29.0929
+    sepal length         × petal length         : 17.6638
+    sepal width          × petal length         : 16.6856
+    sepal length         × petal width          : 14.6744
+    sepal width          × petal width          : 13.6961
+    sepal length         × sepal width          : 2.2670
+
+Par escolhido para superfície de decisão: ('petal length', 'petal width')
+==================================================
+EXECUTANDO DATASET: artificial_I
+==================================================
+
+Acurácia média (25 realizações):
+  Bayesiano      : 99.20% ± 1.42%
+  Naive Bayes    : 99.47% ± 1.22%
+  DMC            : 99.20% ± 1.42%
+  KNN (k=5)      : 99.20% ± 1.71%
+  Scores de separabilidade (Fisher-like):
+    x1                   × x2                   : 10.8453
+
+Par escolhido para superfície de decisão: ('x1', 'x2')
+==================================================
+EXECUTANDO DATASET: vertebral_column
+==================================================
+
+Acurácia média (25 realizações):
+  Bayesiano      : 83.87% ± 4.47%
+  Naive Bayes    : 83.03% ± 4.43%
+  DMC            : 75.74% ± 5.46%
+  KNN (k=5)      : 82.26% ± 3.26%
+  Scores de separabilidade (Fisher-like):
+    lumbar_lordosis_angle × degree_spondylolisthesis : 1.8341
+    sacral_slope         × degree_spondylolisthesis : 1.6938
+    pelvic_incidence     × degree_spondylolisthesis : 1.6476
+    lumbar_lordosis_angle × sacral_slope         : 1.5635
+    pelvic_incidence     × lumbar_lordosis_angle : 1.5173
+    pelvic_incidence     × sacral_slope         : 1.3770
+    pelvic_tilt          × degree_spondylolisthesis : 1.1227
+    pelvic_radius        × degree_spondylolisthesis : 1.1021
+    pelvic_tilt          × lumbar_lordosis_angle : 0.9924
+    lumbar_lordosis_angle × pelvic_radius        : 0.9718
+    pelvic_tilt          × sacral_slope         : 0.8521
+    sacral_slope         × pelvic_radius        : 0.8315
+    pelvic_incidence     × pelvic_tilt          : 0.8059
+    pelvic_incidence     × pelvic_radius        : 0.7853
+    pelvic_tilt          × pelvic_radius        : 0.2604
+
+Par escolhido para superfície de decisão: ('lumbar_lordosis_angle', 'degree_spondylolisthesis')
+==================================================
+EXECUTANDO DATASET: breast_cancer
+==================================================
+
+Acurácia média (25 realizações):
+  Bayesiano      : 88.35% ± 2.99%
+  Naive Bayes    : 93.79% ± 1.92%
+  DMC            : 87.93% ± 2.70%
+  KNN (k=5)      : 93.58% ± 2.24%
+==================================================
+EXECUTANDO DATASET: dermatology
+==================================================
+
+Acurácia média (25 realizações):
+  Bayesiano      : 88.59% ± 3.84%
+  Naive Bayes    : 84.86% ± 4.36%
+  DMC            : 50.43% ± 6.21%
+  KNN (k=5)      : 86.22% ± 2.94%
+
+============================================================
+TABELA LATEX — copie para o relatório:
+============================================================
+\begin{table}[H]
+    \centering
+    \caption{Resultados experimentais --- 25 realizações, divisão 80/20 (Média $\pm$ Desvio Padrão).}
+    \label{tab:results}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{Base de Dados} & \textbf{Bayesiano} & \textbf{Naive Bayes} & \textbf{KNN ($k=5$)} & \textbf{DMC} \\
+        \midrule
+        Íris                 & $97.5 \pm 3.0$ & $94.8 \pm 4.3$ & $96.3 \pm 2.9$ & $90.9 \pm 4.9$ \\
+        Artificial I         & $99.2 \pm 1.4$ & $99.5 \pm 1.2$ & $99.2 \pm 1.7$ & $99.2 \pm 1.4$ \\
+        Coluna Vertebral     & $83.9 \pm 4.5$ & $83.0 \pm 4.4$ & $82.3 \pm 3.3$ & $75.7 \pm 5.5$ \\
+        Breast Cancer        & $88.4 \pm 3.0$ & $93.8 \pm 1.9$ & $93.6 \pm 2.2$ & $87.9 \pm 2.7$ \\
+        Dermatology          & $88.6 \pm 3.8$ & $84.9 \pm 4.4$ & $86.2 \pm 2.9$ & $50.4 \pm 6.2$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+============================================================

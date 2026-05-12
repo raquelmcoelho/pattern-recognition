@@ -103,7 +103,18 @@ def gaussiana_d(x, u, sigma):
     return (1 / denominador) * np.exp(float(expoente))
 
 
-# ---- 3. DADOS: CARREGAMENTO E SPLIT -------------------------
+def gaussiana_1d(x, u, v):
+    """
+    Distribuição gaussiana univariada.
+      x : valor observado
+      u : média
+      v : variância
+    """
+    v = max(v, 1e-9)
+    return (1 / math.sqrt(2 * math.pi * v)) * math.exp(-((x - u) ** 2) / (2 * v))
+
+
+
 
 def limpar_dados(dados):
     """
@@ -112,7 +123,7 @@ def limpar_dados(dados):
     for col in dados.columns[:-1]:  # não mexe na coluna de classe
         serie = dados[col]
         if pd.api.types.is_numeric_dtype(serie):
-            dados[col] = serie.fillna(media(serie))
+            dados[col] = serie.fillna(media(serie.values))
             continue
 
     return dados
@@ -250,7 +261,77 @@ def realizar_bayes(dados, proporcao_treino):
     return taxa, registros, modelo, dados_treino, dados_teste
 
 
-# -- DMC ------------------------------------------------------
+
+
+# -- NAIVE BAYES UNIVARIADO -----------------------------------
+
+def treinar_naive(dados_treino, classes):
+    """
+    Naive Bayes univariado: estima média e variância de cada atributo
+    separadamente para cada classe (assume independência entre atributos).
+
+    Retorna dicionário com estrutura:
+    {
+        'a_prioris': { classe: prob },
+        'medias':    { classe: { atributo: valor } },
+        'variancias':{ classe: { atributo: valor } }
+    }
+    """
+    modelo = {"a_prioris": {}, "medias": {}, "variancias": {}}
+    atributos = list(dados_treino.columns[:-1])
+
+    for classe in classes:
+        filtro = dados_treino[dados_treino["target"] == classe]
+        modelo["a_prioris"][classe] = len(filtro) / len(dados_treino)
+        modelo["medias"][classe]    = {a: media(filtro[a].values) for a in atributos}
+        modelo["variancias"][classe] = {a: variancia(filtro[a].values) for a in atributos}
+
+    return modelo
+
+
+def classificar_naive(linha_teste, modelo, classes, atributos):
+    """
+    Naive Bayes: multiplica as gaussianas 1D de cada atributo para obter
+    a verossimilhança conjunta (pressuposto de independência).
+    Retorna classe predita.
+    """
+    def verossimilhanca(x_dict, classe):
+        prob = 1.0
+        for a in atributos:
+            u = modelo["medias"][classe][a]
+            v = modelo["variancias"][classe][a]
+            prob *= gaussiana_1d(x_dict[a], u, v)
+        return prob
+
+    def evidencia(x_dict):
+        return sum(verossimilhanca(x_dict, c) * modelo["a_prioris"][c] for c in classes)
+
+    def posteriori(x_dict, classe):
+        ev = max(evidencia(x_dict), 1e-9)
+        return (verossimilhanca(x_dict, classe) * modelo["a_prioris"][classe]) / ev
+
+    x_dict = {a: linha_teste[i] for i, a in enumerate(atributos)}
+    probs = {c: posteriori(x_dict, c) for c in classes}
+    return max(probs, key=probs.get)
+
+
+def realizar_naive(dados, proporcao_treino):
+    classes  = dados["target"].unique()
+    atributos = list(dados.columns[:-1])
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    modelo = treinar_naive(dados_treino, classes)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_naive(linha[:-1].values, modelo, classes, atributos)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros
 
 def treinar_dmc(dados_treino, classes):
     """
@@ -347,7 +428,7 @@ def realizar_knn(dados, proporcao_treino, k=5):
 def melhor_par_atributos(dados, classes):
     """
     Escolhe o par (a1, a2) que maximize a separação real das massas de dados.
-    Critério: (fisher(a1) + fisher(a2)) (1 - redundância)
+    Critério: (fisher(a1) + fisher(a2))
     
     Fisher: variância_fora(ai)  
             ------------------   
@@ -359,8 +440,6 @@ def melhor_par_atributos(dados, classes):
       (quanto mais as classes se afastam, melhor)
     - variância dentro: média das variâncias dentro de cada classe, espalhamento da nuvem
       (quanto mais compactas, melhor)
-    - redundância: correlação de Pearson entre os atributos 
-      (quanto mais correlacionados, mais redundantes, pior)
     """
     atributos = list(dados.columns[:-1])
     
@@ -372,23 +451,14 @@ def melhor_par_atributos(dados, classes):
 
         return variancia_fora /(variancia_dentro + 1e-6)
 
-    def correlacao_pearson(a1, a2):
-        x = dados[a1].values
-        y = dados[a2].values
-        cov = covariancia(x, y)
-        dp1 = math.sqrt(variancia(x))
-        dp2 = math.sqrt(variancia(y))
-        if dp1 == 0 or dp2 == 0:
-            return 0
-        return abs(cov / (dp1 * dp2))
     
     fishers = {a: fisher(a) for a in atributos}
     pares = list(itertools.combinations(atributos, 2))
     scores_pares = {}
     
     for a1, a2 in pares:
-        redundancia = correlacao_pearson(a1, a2)
-        scores_pares[(a1, a2)] = (fishers[a1] + fishers[a2]) * (1 - redundancia)
+        redundancia = correlacao_pearson(a1, a
+        scores_pares[(a1, a2)] = (fishers[a1] + fishers[a2])
 
     melhor = max(scores_pares, key=scores_pares.get)
 
@@ -415,7 +485,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
     cores = ["#2196F3", "#4CAF50", "#FF5722", "#9C27B0", "#FF9800", "#00BCD4"]
     cores_classe = {c: cor for c, cor in zip(classes, cores)}
 
-    # grade de pixels cobrindo o espaço dos dados
+    #  grade de pixels cobrindo o espaço dos dados 
     margem = 0.5
     x1_lin = np.linspace(dados[a1].min() - margem, dados[a1].max() + margem, 200)
     x2_lin = np.linspace(dados[a2].min() - margem, dados[a2].max() + margem, 200)
@@ -425,7 +495,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
     # para que o classificador (que usa todos os atributos) funcione
     medias_globais = dados[atributos].apply(media)
 
-    # classifica cada pixel da grade
+    #  classifica cada pixel da grade 
     grade_classes = np.empty(X1.shape, dtype=object)
     for i in range(X1.shape[0]):
         for j in range(X1.shape[1]):
@@ -434,19 +504,19 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
             ponto[a2] = X2[i, j]
             grade_classes[i, j] = classificar_bayes(ponto.values, modelo, classes)
 
-    # converte classes para inteiros para detectar mudanças entre pixels
+    #  converte classes para inteiros para detectar mudanças entre pixels 
     indice_classe = {c: i for i, c in enumerate(classes)}
     grade_num = np.vectorize(indice_classe.get)(grade_classes)
 
     fig, ax = plt.subplots(figsize=(9, 7))
 
-    # pinta cada região com a cor da classe
+    #  pinta cada região com a cor da classe 
     for c in classes:
         mascara = (grade_classes == c).astype(float)
         ax.contourf(X1, X2, mascara, levels=[0.5, 1.5],
                     colors=[cores_classe[c]], alpha=0.25)
 
-    # fronteira de decisão: onde a classe muda entre pixels vizinhos
+    #  fronteira de decisão: onde a classe muda entre pixels vizinhos 
     borda_h = np.diff(grade_num, axis=0) != 0  # mudança vertical
     borda_v = np.diff(grade_num, axis=1) != 0  # mudança horizontal
 
@@ -460,7 +530,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
 
     ax.scatter(borda_x, borda_y, c="black", s=0.3, zorder=2)
 
-    # curvas de nível das gaussianas (formato elipsoidal por classe)
+    #  curvas de nível das gaussianas (formato elipsoidal por classe) 
     i1 = atributos.index(a1)
     i2 = atributos.index(a2)
 
@@ -484,7 +554,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
         ax.contour(X1, X2, Z, levels=4,
                    colors=[cores_classe[c]], linewidths=1.5, zorder=3)
 
-    # pontos de treino (círculo) e teste (X) por classe --
+    #  pontos de treino (círculo) e teste (X) por classe 
     for c in classes:
         cor = cores_classe[c]
         t = dados_treino[dados_treino["target"] == c]
@@ -539,9 +609,65 @@ def plotar_matriz_confusao(nome_dataset, registros, classes):
     plt.show()
 
 
+def gerar_tabela_latex(resultados):
+    """
+    Gera automaticamente a tabela LaTeX de resultados a partir do dicionário:
+    {
+        nome_dataset: {
+            "Bayesiano": (acc, dev),
+            "Naive Bayes": (acc, dev),
+            "KNN": (acc, dev),
+            "DMC": (acc, dev),
+        }
+    }
+    """
+    nomes_display = {
+        "iris":             "Íris",
+        "vertebral_column": "Coluna Vertebral",
+        "breast_cancer":    "Breast Cancer",
+        "dermatology":      "Dermatology",
+        "artificial_I":     "Artificial I",
+    }
+
+    linhas = []
+    for dataset, classifs in resultados.items():
+        nome = nomes_display.get(dataset, dataset)
+        celulas = " & ".join(
+            f"${v[0]:.1f} \\pm {v[1]:.1f}$"
+            for v in classifs.values()
+        )
+        linhas.append(f"        {nome:<20s} & {celulas} \\\\")
+
+    cabecalhos = " & ".join(
+        f"\\textbf{{{c}}}" for c in next(iter(resultados.values())).keys()
+    )
+
+    tabela = f"""\\begin{{table}}[H]
+    \\centering
+    \\caption{{Resultados experimentais --- 25 realizações, divisão 80/20 (Média $\\pm$ Desvio Padrão).}}
+    \\label{{tab:results}}
+    \\begin{{tabular}}{{@{{}}l{"c" * len(next(iter(resultados.values())))}@{{}}}}
+        \\toprule
+        \\textbf{{Base de Dados}} & {cabecalhos} \\\\
+        \\midrule
+{chr(10).join(linhas)}
+        \\bottomrule
+    \\end{{tabular}}
+\\end{{table}}"""
+
+    print("\n" + "=" * 60)
+    print("TABELA LATEX — copie para o relatório:")
+    print("=" * 60)
+    print(tabela)
+    print("=" * 60 + "\n")
+    return tabela
+
+
 # ---- 8. EXECUÇÃO PRINCIPAL ----------------------------------
 
 DATASETS_COM_SUPERFICIE_DECISAO = {"iris", "vertebral_column", "artificial_I"}
+
+resultados_globais = {}  # acumulado de todos os datasets para a tabela LaTeX
 
 
 def executar_dataset(nome_dataset, k_knn=5):
@@ -556,30 +682,41 @@ def executar_dataset(nome_dataset, k_knn=5):
     classes = dados["target"].unique()
 
     historico_bayes = []
+    historico_naive = []
     historico_dmc   = []
     historico_knn   = []
 
     for _ in range(N_REALIZACOES):
         historico_bayes.append(realizar_bayes(dados, PROPORCAO_TREINO))
+        historico_naive.append(realizar_naive(dados, PROPORCAO_TREINO))
         historico_dmc.append(realizar_dmc(dados, PROPORCAO_TREINO))
         historico_knn.append(realizar_knn(dados, PROPORCAO_TREINO, k=k_knn))
 
     def resumo(historico, nome):
         taxas = [h[0] for h in historico]
-        acuracia = media(taxas)
-        desvio_padrao = math.sqrt(variancia(taxas))
-        print(f"  {nome:12s}: {acuracia:.2f}% ± {desvio_padrao:.2f}%")
-        return acuracia, desvio_padrao
+        acc   = media(taxas)
+        dev   = math.sqrt(variancia(taxas))
+        print(f"  {nome:15s}: {acc:.2f}% ± {dev:.2f}%")
+        return acc, dev
 
     print(f"\nAcurácia média ({N_REALIZACOES} realizações):")
-    acuracia_bayes, desvio_padrao_bayes = resumo(historico_bayes, "Bayesiano")
-    acuracia_dmc,   desvio_padrao_dmc   = resumo(historico_dmc,   "DMC")
-    acuracia_knn,   desvio_padrao_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
+    acc_bayes, dev_bayes = resumo(historico_bayes, "Bayesiano")
+    acc_naive, dev_naive = resumo(historico_naive, "Naive Bayes")
+    acc_dmc,   dev_dmc   = resumo(historico_dmc,   "DMC")
+    acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
 
-    # realização mais próxima da média de cada classificador
-    rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acuracia_bayes))
+    # guarda para a tabela LaTeX global
+    resultados_globais[nome_dataset] = {
+        "Bayesiano":   (acc_bayes, dev_bayes),
+        "Naive Bayes": (acc_naive, dev_naive),
+        f"KNN ($k={k_knn}$)": (acc_knn, dev_knn),
+        "DMC":         (acc_dmc,   dev_dmc),
+    }
 
-    # matriz de confusão do Bayesiano (realização representativa)
+    # realização mais próxima da média → mais representativa
+    rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acc_bayes))
+
+    # matriz de confusão do Bayesiano
     plotar_matriz_confusao(nome_dataset, rep_bayes[1], classes)
 
     # superfície de decisão
@@ -599,3 +736,6 @@ if __name__ == "__main__":
     executar_dataset("vertebral_column")
     executar_dataset("breast_cancer")
     executar_dataset("dermatology")
+
+    # gera a tabela LaTeX com todos os resultados ao final
+    gerar_tabela_latex(resultados_globais)
