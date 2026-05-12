@@ -114,8 +114,6 @@ def gaussiana_1d(x, u, v):
     return (1 / math.sqrt(2 * math.pi * v)) * math.exp(-((x - u) ** 2) / (2 * v))
 
 
-
-
 def limpar_dados(dados):
     """
     Preencher dados faltantes com média da coluna (apenas para colunas numéricas).
@@ -184,7 +182,6 @@ def split_treino_teste(dados, proporcao_treino):
     corte = min(corte, len(dados) - 1)  # garante ao menos 1 amostra de teste
     return dados.iloc[:corte], dados.iloc[corte:]
 
-
 # ---- 4. TREINO ----------------------------------------------
 
 def treinar_bayes(dados_treino, classes):
@@ -210,61 +207,6 @@ def treinar_bayes(dados_treino, classes):
 
     return modelo
 
-
-# ---- 5. CLASSIFICAÇÃO ---------------------------------------
-
-def classificar_bayes(linha_teste, modelo, classes):
-    """
-    Calcula a posteriori usando a gaussiana multivariada.
-    Retorna classe predita.
-    """
-
-    def verossimilhanca_d(x, classe):
-        u = modelo["medias"][classe]
-        sigma = modelo["covariancias"][classe]
-        return gaussiana_d(x, u, sigma)
-
-    def evidencia_d(x):
-        return sum(verossimilhanca_d(x, c) * modelo["a_prioris"][c] for c in classes)
-
-    def posteriori_d(x, classe):
-        ev = max(float(evidencia_d(x)), 1e-9)
-        return (verossimilhanca_d(x, classe) * modelo["a_prioris"][classe]) / ev
-
-    probs = {c: posteriori_d(linha_teste, c) for c in classes}
-    return max(probs, key=probs.get)
-
-
-# ---- 6. AVALIAÇÃO -------------------------------------------
-
-
-def realizar_bayes(dados, proporcao_treino):
-    """
-    Executa uma realização completa: split → treino → avaliação.
-    Retorna (taxa, registros, modelo, dados_treino, dados_teste).
-    """
-    classes = dados["target"].unique()
-    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
-    modelo = treinar_bayes(dados_treino, classes)
-
-    acertos = 0
-    registros = []
-    for _, linha_teste in dados_teste.iterrows():
-        previsto = classificar_bayes(linha_teste[:-1].values, modelo, classes)
-        real = linha_teste["target"]
-        registros.append((real, previsto))
-        if previsto == real:
-            acertos += 1
-
-    taxa = (acertos / len(dados_teste)) * 100
-
-    return taxa, registros, modelo, dados_treino, dados_teste
-
-
-
-
-# -- NAIVE BAYES UNIVARIADO -----------------------------------
-
 def treinar_naive(dados_treino, classes):
     """
     Naive Bayes univariado: estima média e variância de cada atributo
@@ -288,6 +230,43 @@ def treinar_naive(dados_treino, classes):
 
     return modelo
 
+def treinar_dmc(dados_treino, classes):
+    """
+    DMC (Distância Mínima ao Centroide).
+    Treino: calcula o centroide (vetor de médias) de cada classe.
+
+    Retorna { classe: [media_a1, media_a2, ..., media_ad] }
+    """
+    atributos = list(dados_treino.columns[:-1])
+    centroides = {}
+    for classe in classes:
+        filtro = dados_treino[dados_treino["target"] == classe]
+        centroides[classe] = [media(filtro[a].values) for a in atributos]
+    return centroides
+
+
+# ---- 5. CLASSIFICAÇÃO ---------------------------------------
+
+def classificar_bayes(linha_teste, modelo, classes):
+    """
+    Calcula a posteriori usando a gaussiana multivariada.
+    Retorna classe predita.
+    """
+
+    def verossimilhanca_d(x, classe):
+        u = modelo["medias"][classe]
+        sigma = modelo["covariancias"][classe]
+        return gaussiana_d(x, u, sigma)
+
+    def evidencia_d(x):
+        return sum(verossimilhanca_d(x, c) * modelo["a_prioris"][c] for c in classes)
+
+    def posteriori_d(x, classe):
+        ev = max(float(evidencia_d(x)), 1e-9)
+        return (verossimilhanca_d(x, classe) * modelo["a_prioris"][classe]) / ev
+
+    probs = {c: posteriori_d(linha_teste, c) for c in classes}
+    return max(probs, key=probs.get)
 
 def classificar_naive(linha_teste, modelo, classes, atributos):
     """
@@ -314,40 +293,6 @@ def classificar_naive(linha_teste, modelo, classes, atributos):
     probs = {c: posteriori(x_dict, c) for c in classes}
     return max(probs, key=probs.get)
 
-
-def realizar_naive(dados, proporcao_treino):
-    classes  = dados["target"].unique()
-    atributos = list(dados.columns[:-1])
-    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
-    modelo = treinar_naive(dados_treino, classes)
-
-    acertos = 0
-    registros = []
-    for _, linha in dados_teste.iterrows():
-        previsto = classificar_naive(linha[:-1].values, modelo, classes, atributos)
-        real = linha["target"]
-        registros.append((real, previsto))
-        if previsto == real:
-            acertos += 1
-
-    taxa = (acertos / len(dados_teste)) * 100
-    return taxa, registros
-
-def treinar_dmc(dados_treino, classes):
-    """
-    DMC (Distância Mínima ao Centroide).
-    Treino: calcula o centroide (vetor de médias) de cada classe.
-
-    Retorna { classe: [media_a1, media_a2, ..., media_ad] }
-    """
-    atributos = list(dados_treino.columns[:-1])
-    centroides = {}
-    for classe in classes:
-        filtro = dados_treino[dados_treino["target"] == classe]
-        centroides[classe] = [media(filtro[a].values) for a in atributos]
-    return centroides
-
-
 def classificar_dmc(linha_teste, centroides, classes):
     """
     DMC: classifica pelo centroide mais próximo (distância euclidiana).
@@ -357,27 +302,6 @@ def classificar_dmc(linha_teste, centroides, classes):
         for c in classes
     }
     return min(distancias, key=distancias.get)
-
-
-def realizar_dmc(dados, proporcao_treino):
-    classes = dados["target"].unique()
-    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
-    centroides = treinar_dmc(dados_treino, classes)
-
-    acertos = 0
-    registros = []
-    for _, linha in dados_teste.iterrows():
-        previsto = classificar_dmc(linha[:-1].values, centroides, classes)
-        real = linha["target"]
-        registros.append((real, previsto))
-        if previsto == real:
-            acertos += 1
-
-    taxa = (acertos / len(dados_teste)) * 100
-    return taxa, registros, centroides, dados_treino, dados_teste
-
-
-# -- KNN ------------------------------------------------------
 
 def classificar_knn(linha_teste, dados_treino, classes, k=5):
     """
@@ -404,6 +328,65 @@ def classificar_knn(linha_teste, dados_treino, classes, k=5):
     return max(votos, key=votos.get)
 
 
+# ---- 6. AVALIAÇÃO -------------------------------------------
+
+def realizar_bayes(dados, proporcao_treino):
+    """
+    Executa uma realização completa: split → treino → avaliação.
+    Retorna (taxa, registros, modelo, dados_treino, dados_teste).
+    """
+    classes = dados["target"].unique()
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    modelo = treinar_bayes(dados_treino, classes)
+
+    acertos = 0
+    registros = []
+    for _, linha_teste in dados_teste.iterrows():
+        previsto = classificar_bayes(linha_teste[:-1].values, modelo, classes)
+        real = linha_teste["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+
+    return taxa, registros, modelo, dados_treino, dados_teste
+
+def realizar_naive(dados, proporcao_treino):
+    classes  = dados["target"].unique()
+    atributos = list(dados.columns[:-1])
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    modelo = treinar_naive(dados_treino, classes)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_naive(linha[:-1].values, modelo, classes, atributos)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros
+
+def realizar_dmc(dados, proporcao_treino):
+    classes = dados["target"].unique()
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    centroides = treinar_dmc(dados_treino, classes)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_dmc(linha[:-1].values, centroides, classes)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros, centroides, dados_treino, dados_teste
+
 def realizar_knn(dados, proporcao_treino, k=5):
     classes = dados["target"].unique()
     dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
@@ -422,8 +405,6 @@ def realizar_knn(dados, proporcao_treino, k=5):
 
 
 # ---- 7. VISUALIZAÇÃO ----------------------------------------
-# Filosofia: gráficos gerados UMA VEZ ao final de todas as realizações.
-
 
 def melhor_par_atributos(dados, classes):
     """
@@ -457,7 +438,6 @@ def melhor_par_atributos(dados, classes):
     scores_pares = {}
     
     for a1, a2 in pares:
-        redundancia = correlacao_pearson(a1, a
         scores_pares[(a1, a2)] = (fishers[a1] + fishers[a2])
 
     melhor = max(scores_pares, key=scores_pares.get)
@@ -609,66 +589,10 @@ def plotar_matriz_confusao(nome_dataset, registros, classes):
     plt.show()
 
 
-def gerar_tabela_latex(resultados):
-    """
-    Gera automaticamente a tabela LaTeX de resultados a partir do dicionário:
-    {
-        nome_dataset: {
-            "Bayesiano": (acc, dev),
-            "Naive Bayes": (acc, dev),
-            "KNN": (acc, dev),
-            "DMC": (acc, dev),
-        }
-    }
-    """
-    nomes_display = {
-        "iris":             "Íris",
-        "vertebral_column": "Coluna Vertebral",
-        "breast_cancer":    "Breast Cancer",
-        "dermatology":      "Dermatology",
-        "artificial_I":     "Artificial I",
-    }
-
-    linhas = []
-    for dataset, classifs in resultados.items():
-        nome = nomes_display.get(dataset, dataset)
-        celulas = " & ".join(
-            f"${v[0]:.1f} \\pm {v[1]:.1f}$"
-            for v in classifs.values()
-        )
-        linhas.append(f"        {nome:<20s} & {celulas} \\\\")
-
-    cabecalhos = " & ".join(
-        f"\\textbf{{{c}}}" for c in next(iter(resultados.values())).keys()
-    )
-
-    tabela = f"""\\begin{{table}}[H]
-    \\centering
-    \\caption{{Resultados experimentais --- 25 realizações, divisão 80/20 (Média $\\pm$ Desvio Padrão).}}
-    \\label{{tab:results}}
-    \\begin{{tabular}}{{@{{}}l{"c" * len(next(iter(resultados.values())))}@{{}}}}
-        \\toprule
-        \\textbf{{Base de Dados}} & {cabecalhos} \\\\
-        \\midrule
-{chr(10).join(linhas)}
-        \\bottomrule
-    \\end{{tabular}}
-\\end{{table}}"""
-
-    print("\n" + "=" * 60)
-    print("TABELA LATEX — copie para o relatório:")
-    print("=" * 60)
-    print(tabela)
-    print("=" * 60 + "\n")
-    return tabela
-
 
 # ---- 8. EXECUÇÃO PRINCIPAL ----------------------------------
 
 DATASETS_COM_SUPERFICIE_DECISAO = {"iris", "vertebral_column", "artificial_I"}
-
-resultados_globais = {}  # acumulado de todos os datasets para a tabela LaTeX
-
 
 def executar_dataset(nome_dataset, k_knn=5):
     PROPORCAO_TREINO = 0.8
@@ -705,14 +629,6 @@ def executar_dataset(nome_dataset, k_knn=5):
     acc_dmc,   dev_dmc   = resumo(historico_dmc,   "DMC")
     acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
 
-    # guarda para a tabela LaTeX global
-    resultados_globais[nome_dataset] = {
-        "Bayesiano":   (acc_bayes, dev_bayes),
-        "Naive Bayes": (acc_naive, dev_naive),
-        f"KNN ($k={k_knn}$)": (acc_knn, dev_knn),
-        "DMC":         (acc_dmc,   dev_dmc),
-    }
-
     # realização mais próxima da média → mais representativa
     rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acc_bayes))
 
@@ -736,6 +652,3 @@ if __name__ == "__main__":
     executar_dataset("vertebral_column")
     executar_dataset("breast_cancer")
     executar_dataset("dermatology")
-
-    # gera a tabela LaTeX com todos os resultados ao final
-    gerar_tabela_latex(resultados_globais)
