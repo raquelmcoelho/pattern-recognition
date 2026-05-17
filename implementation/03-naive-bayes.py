@@ -511,18 +511,12 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
     ax.scatter(borda_x, borda_y, c="black", s=0.3, zorder=2)
 
     #  curvas de nível das gaussianas (formato elipsoidal por classe) 
-    i1 = atributos.index(a1)
-    i2 = atributos.index(a2)
-
-
     for c in classes:
-        u_full = [modelo["medias"][c][a] for a in atributos]
-        
         # monta matriz 2x2 diagonal com as variâncias do par
         # diagonal = pressuposto de independência do Naive Bayes
         v1 = modelo["variancias"][c][a1]
         v2 = modelo["variancias"][c][a2]
-        u_2d = np.array([u_full[i1], u_full[i2]])
+        u_2d = np.array([modelo["medias"][c][a1], modelo["medias"][c][a2]])
         sigma_2d = np.array([
             [v1, 0],
             [0,  v2]
