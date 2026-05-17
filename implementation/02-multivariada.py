@@ -102,18 +102,6 @@ def gaussiana_d(x, u, sigma):
     denominador = (2 * np.pi) ** (d / 2) * np.sqrt(det)
     return (1 / denominador) * np.exp(float(expoente))
 
-
-def gaussiana_1d(x, u, v):
-    """
-    Distribuição gaussiana univariada.
-      x : valor observado
-      u : média
-      v : variância
-    """
-    v = max(v, 1e-9)
-    return (1 / math.sqrt(2 * math.pi * v)) * math.exp(-((x - u) ** 2) / (2 * v))
-
-
 def limpar_dados(dados):
     """
     Preencher dados faltantes com média da coluna (apenas para colunas numéricas).
@@ -121,7 +109,7 @@ def limpar_dados(dados):
     for col in dados.columns[:-1]:  # não mexe na coluna de classe
         serie = dados[col]
         if pd.api.types.is_numeric_dtype(serie):
-            dados[col] = serie.fillna(media(serie.values))
+            dados[col] = serie.fillna(media(serie.dropna().values))
             continue
 
     return dados
@@ -207,28 +195,6 @@ def treinar_bayes(dados_treino, classes):
 
     return modelo
 
-def treinar_naive(dados_treino, classes):
-    """
-    Naive Bayes univariado: estima média e variância de cada atributo
-    separadamente para cada classe (assume independência entre atributos).
-
-    Retorna dicionário com estrutura:
-    {
-        'a_prioris': { classe: prob },
-        'medias':    { classe: { atributo: valor } },
-        'variancias':{ classe: { atributo: valor } }
-    }
-    """
-    modelo = {"a_prioris": {}, "medias": {}, "variancias": {}}
-    atributos = list(dados_treino.columns[:-1])
-
-    for classe in classes:
-        filtro = dados_treino[dados_treino["target"] == classe]
-        modelo["a_prioris"][classe] = len(filtro) / len(dados_treino)
-        modelo["medias"][classe]    = {a: media(filtro[a].values) for a in atributos}
-        modelo["variancias"][classe] = {a: variancia(filtro[a].values) for a in atributos}
-
-    return modelo
 
 def treinar_dmc(dados_treino, classes):
     """
@@ -266,31 +232,6 @@ def classificar_bayes(linha_teste, modelo, classes):
         return (verossimilhanca_d(x, classe) * modelo["a_prioris"][classe]) / ev
 
     probs = {c: posteriori_d(linha_teste, c) for c in classes}
-    return max(probs, key=probs.get)
-
-def classificar_naive(linha_teste, modelo, classes, atributos):
-    """
-    Naive Bayes: multiplica as gaussianas 1D de cada atributo para obter
-    a verossimilhança conjunta (pressuposto de independência).
-    Retorna classe predita.
-    """
-    def verossimilhanca(x_dict, classe):
-        prob = 1.0
-        for a in atributos:
-            u = modelo["medias"][classe][a]
-            v = modelo["variancias"][classe][a]
-            prob *= gaussiana_1d(x_dict[a], u, v)
-        return prob
-
-    def evidencia(x_dict):
-        return sum(verossimilhanca(x_dict, c) * modelo["a_prioris"][c] for c in classes)
-
-    def posteriori(x_dict, classe):
-        ev = max(evidencia(x_dict), 1e-9)
-        return (verossimilhanca(x_dict, classe) * modelo["a_prioris"][classe]) / ev
-
-    x_dict = {a: linha_teste[i] for i, a in enumerate(atributos)}
-    probs = {c: posteriori(x_dict, c) for c in classes}
     return max(probs, key=probs.get)
 
 def classificar_dmc(linha_teste, centroides, classes):
@@ -351,24 +292,6 @@ def realizar_bayes(dados, proporcao_treino):
     taxa = (acertos / len(dados_teste)) * 100
 
     return taxa, registros, modelo, dados_treino, dados_teste
-
-def realizar_naive(dados, proporcao_treino):
-    classes  = dados["target"].unique()
-    atributos = list(dados.columns[:-1])
-    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
-    modelo = treinar_naive(dados_treino, classes)
-
-    acertos = 0
-    registros = []
-    for _, linha in dados_teste.iterrows():
-        previsto = classificar_naive(linha[:-1].values, modelo, classes, atributos)
-        real = linha["target"]
-        registros.append((real, previsto))
-        if previsto == real:
-            acertos += 1
-
-    taxa = (acertos / len(dados_teste)) * 100
-    return taxa, registros
 
 def realizar_dmc(dados, proporcao_treino):
     classes = dados["target"].unique()
@@ -606,13 +529,11 @@ def executar_dataset(nome_dataset, k_knn=5):
     classes = dados["target"].unique()
 
     historico_bayes = []
-    historico_naive = []
     historico_dmc   = []
     historico_knn   = []
 
     for _ in range(N_REALIZACOES):
         historico_bayes.append(realizar_bayes(dados, PROPORCAO_TREINO))
-        historico_naive.append(realizar_naive(dados, PROPORCAO_TREINO))
         historico_dmc.append(realizar_dmc(dados, PROPORCAO_TREINO))
         historico_knn.append(realizar_knn(dados, PROPORCAO_TREINO, k=k_knn))
 
@@ -625,7 +546,6 @@ def executar_dataset(nome_dataset, k_knn=5):
 
     print(f"\nAcurácia média ({N_REALIZACOES} realizações):")
     acc_bayes, dev_bayes = resumo(historico_bayes, "Bayesiano")
-    acc_naive, dev_naive = resumo(historico_naive, "Naive Bayes")
     acc_dmc,   dev_dmc   = resumo(historico_dmc,   "DMC")
     acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
 
