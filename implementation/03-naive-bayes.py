@@ -121,7 +121,7 @@ def limpar_dados(dados):
     for col in dados.columns[:-1]:  # não mexe na coluna de classe
         serie = dados[col]
         if pd.api.types.is_numeric_dtype(serie):
-            dados[col] = serie.fillna(media(serie.values))
+            dados[col] = serie.fillna(media(serie.dropna().values))
             continue
 
     return dados
@@ -368,7 +368,7 @@ def realizar_naive(dados, proporcao_treino):
             acertos += 1
 
     taxa = (acertos / len(dados_teste)) * 100
-    return taxa, registros
+    return taxa, registros, modelo, dados_treino, dados_teste
 
 def realizar_dmc(dados, proporcao_treino):
     classes = dados["target"].unique()
@@ -482,7 +482,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
             ponto = medias_globais.copy()
             ponto[a1] = X1[i, j]
             ponto[a2] = X2[i, j]
-            grade_classes[i, j] = classificar_bayes(ponto.values, modelo, classes)
+            grade_classes[i, j] = classificar_naive(ponto.values, modelo, classes, atributos)
 
     #  converte classes para inteiros para detectar mudanças entre pixels 
     indice_classe = {c: i for i, c in enumerate(classes)}
@@ -514,25 +514,27 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
     i1 = atributos.index(a1)
     i2 = atributos.index(a2)
 
-    for c in classes:
-        u_full = np.array(modelo["medias"][c])
-        sigma_full = modelo["covariancias"][c]
 
-        # extrai submatriz 2x2 do par escolhido
+    for c in classes:
+        u_full = [modelo["medias"][c][a] for a in atributos]
+        
+        # monta matriz 2x2 diagonal com as variâncias do par
+        # diagonal = pressuposto de independência do Naive Bayes
+        v1 = modelo["variancias"][c][a1]
+        v2 = modelo["variancias"][c][a2]
         u_2d = np.array([u_full[i1], u_full[i2]])
         sigma_2d = np.array([
-            [sigma_full[i1, i1], sigma_full[i1, i2]],
-            [sigma_full[i2, i1], sigma_full[i2, i2]]
+            [v1, 0],
+            [0,  v2]
         ])
 
         Z = np.array([
             [gaussiana_d(np.array([x1, x2]), u_2d, sigma_2d)
-             for x1 in x1_lin]
+            for x1 in x1_lin]
             for x2 in x2_lin
         ])
 
-        ax.contour(X1, X2, Z, levels=4,
-                   colors=[cores_classe[c]], linewidths=1.5, zorder=3)
+        ax.contour(X1, X2, Z, levels=4, colors=[cores_classe[c]], linewidths=1.5, zorder=3)
 
     #  pontos de treino (círculo) e teste (X) por classe 
     for c in classes:
@@ -630,16 +632,16 @@ def executar_dataset(nome_dataset, k_knn=5):
     acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
 
     # realização mais próxima da média → mais representativa
-    rep_bayes = min(historico_bayes, key=lambda h: abs(h[0] - acc_bayes))
+    rep_naive = min(historico_naive, key=lambda h: abs(h[0] - acc_naive))
 
-    # matriz de confusão do Bayesiano
-    plotar_matriz_confusao(nome_dataset, rep_bayes[1], classes)
+    # matriz de confusão do Naive Bayes
+    plotar_matriz_confusao(nome_dataset, rep_naive[1], classes)
 
     # superfície de decisão
     if nome_dataset in DATASETS_COM_SUPERFICIE_DECISAO:
         par = melhor_par_atributos(dados, classes)
         print(f"\nPar escolhido para superfície de decisão: {par}")
-        taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_bayes
+        taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_naive
         plotar_superficie_decisao(
             nome_dataset, dados, modelo_rep, classes,
             par, treino_rep, teste_rep
