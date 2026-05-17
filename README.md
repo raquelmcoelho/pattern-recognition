@@ -52,7 +52,7 @@ Initial investigation of data distributions, probability density functions, and 
 
 Generative modeling via Gaussian distributions with full covariance matrices ($\Sigma_{d \times d}$), capturing cross-feature correlations. Includes **DMC** (Minimum Distance to Centroid) and **KNN** as comparative baselines.
 
-![Multivariate Gaussian](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Multivariate_Gaussian.png/640px-Multivariate_Gaussian.png)
+![Multivariate Gaussian](https://i0.wp.com/statisticsbyjim.com/wp-content/uploads/2025/05/multivariate_normal_distribution.png?w=550&ssl=1)
 *Multivariate Gaussian distribution with probability contours*
 
 ---
