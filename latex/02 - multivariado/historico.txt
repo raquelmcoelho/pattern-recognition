@@ -76,7 +76,7 @@ Acurácia média (25 realizações):
   KNN (k=5)      : 86.22% ± 2.94%
 
 ============================================================
-TABELA LATEX — copie para o relatório:
+TABELA LATEX :
 ============================================================
 \begin{table}[H]
     \centering

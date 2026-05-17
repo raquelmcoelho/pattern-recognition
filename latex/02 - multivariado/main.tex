@@ -1,0 +1,350 @@
+\documentclass[12pt, a4paper]{article}
+
+% ---- Ajustes de Idioma e Fontes Modernas -------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{mathpazo}
+\usepackage[scaled=0.95]{helvet}
+\usepackage{courier}
+
+% ---- Pacotes de Layout e Design ----------------------------
+\usepackage{geometry}
+\geometry{a4paper, top=3cm, bottom=2cm, left=3cm, right=2cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{indentfirst}
+\usepackage{microtype}
+
+% ---- Cores e Hiperlinks ------------------------------------
+\usepackage{xcolor}
+\definecolor{brandblue}{RGB}{44, 62, 80}
+\definecolor{softgray}{RGB}{245, 245, 245}
+\usepackage[colorlinks=true, allcolors=brandblue]{hyperref}
+
+% ---- Elementos Matemáticos e Gráficos ----------------------
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+% ---- Customização de Títulos -------------------------------
+\usepackage{titlesec}
+\titleformat{\section}{\color{brandblue}\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\color{brandblue}\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% =============================================================
+\begin{document}
+% =============================================================
+
+% ---- CAPA ---------------------------------------------------
+\begin{titlepage}
+    \begin{flushleft}
+        \Large \textbf{Instituto Federal do Ceará} \\
+        \large Mestrado em Ciência da Computação \\
+        \small Disciplina: Reconhecimento de Padrões
+    \end{flushleft}
+    \vspace{4cm}
+    \begin{center}
+        \hrule\vspace{0.5cm}
+        {\huge \textbf{\color{brandblue} Classificadores Bayesianos}}\\
+        \vspace{0.2cm}
+        {\Large Trabalho 02: Gaussiano Multivariado}
+        \vspace{0.5cm}\hrule
+    \end{center}
+    \vspace{3cm}
+    \begin{flushright}
+        \large \textbf{Raquel Maciel Coelho de Sousa}\\
+        \small Professor: Dr. Ajalmar Rocha Neto
+    \end{flushright}
+    \vfill
+    \begin{center}\small Fortaleza, 11 de maio de 2026 \end{center}
+\end{titlepage}
+
+\newpage
+{\hypersetup{linkcolor=black}\tableofcontents}
+\newpage
+
+% =============================================================
+\section{Introdução}
+% =============================================================
+
+Este relatório descreve a implementação e avaliação do
+\textbf{Classificador Bayesiano Gaussiano Multivariado}, desenvolvido
+como Trabalho~02 da disciplina de Reconhecimento de Padrões. O modelo
+foi treinado e testado sobre cinco conjuntos de dados: Flor Íris,
+Coluna Vertebral, Breast Cancer Wisconsin, Dermatology e Artificial~I, e seus resultados foram comparados
+com os classificadores KNN e DMC.
+
+% =============================================================
+\section{Fundamentação Teórica}
+% =============================================================
+
+\subsection{Teorema de Bayes}
+
+O classificador fundamenta-se no Teorema de Bayes:
+
+\begin{equation}
+    P(C_i \mid \mathbf{x}) =
+    \frac{p(\mathbf{x} \mid C_i)\,P(C_i)}{p(\mathbf{x})}
+\end{equation}
+
+\noindent onde $P(C_i)$ é a probabilidade \textit{a priori} da classe,
+$p(\mathbf{x} \mid C_i)$ é a verossimilhança e
+$p(\mathbf{x}) = \sum_k p(\mathbf{x} \mid C_k)\,P(C_k)$ é a evidência.
+A decisão final é $\hat{C} = \arg\max_{C_i} P(C_i \mid \mathbf{x})$.
+
+\subsection{Distribuição Gaussiana Multivariada}
+
+A verossimilhança é modelada pela gaussiana multivariada de dimensão $d$:
+
+\begin{equation}
+    p(\mathbf{x}) =
+    \frac{1}{(2\pi)^{d/2}|\Sigma|^{1/2}}
+    \exp\!\left\{
+        -\tfrac{1}{2}(\mathbf{x}-\boldsymbol{\mu})^T
+        \Sigma^{-1}(\mathbf{x}-\boldsymbol{\mu})
+    \right\}
+    \label{eq:gaussiana}
+\end{equation}
+
+\noindent onde $\boldsymbol{\mu}_i$ e $\Sigma_i$ são estimados
+\textbf{independentemente para cada classe} a partir dos dados de treino,
+sem simplificações.
+
+\subsection{Matriz de Covariância}
+
+\begin{equation}
+    \Sigma =
+    \begin{bmatrix}
+        \sigma_{11}^2 & \sigma_{12} & \cdots & \sigma_{1d}\\
+        \sigma_{21} & \sigma_{22}^2 & \cdots & \sigma_{2d}\\
+        \vdots & \vdots & \ddots & \vdots\\
+        \sigma_{d1} & \sigma_{d2} & \cdots & \sigma_{dd}^2
+    \end{bmatrix}
+\end{equation}
+
+A diagonal contém as variâncias individuais; fora da diagonal estão
+as covariâncias, que capturam correlações entre pares de atributos.
+A simetria ($\Sigma_{ij}=\Sigma_{ji}$) é explorada para reduzir
+cálculos: apenas o triângulo superior é computado.
+
+\subsection{Regularização de Tikhonov}
+
+Quando um atributo tem variância zero dentro de uma classe (comum em
+datasets com atributos binários e classes pequenas), $\Sigma$ torna-se
+singular e não possui inversa. A solução adotada é somar
+$\varepsilon\mathbf{I}$ à diagonal antes de inverter:
+
+\begin{equation}
+    \Sigma_{\text{reg}} = \Sigma + \varepsilon\mathbf{I},\quad
+    \varepsilon = 10^{-6}
+\end{equation}
+
+\subsection{Classificadores de Referência}
+
+\textbf{DMC} — no treino calcula o centroide de cada classe
+$\boldsymbol{c}_i = \frac{1}{|C_i|}\sum_{\mathbf{x}\in C_i}\mathbf{x}$;
+na classificação escolhe a classe de menor distância euclidiana.
+
+\textbf{KNN} ($k=5$) — não possui treino explícito; classifica pelo
+voto majoritário entre os $k$ vizinhos mais próximos no conjunto de
+treino.
+
+\subsection{Escolha do Par de Atributos para Visualização}
+
+O par foi selecionado maximizando o critério de Fisher :
+
+\begin{equation}
+    \text{score}(a_1,a_2) =
+    \text{Fisher}(a_1)+\text{Fisher}(a_2)
+\end{equation}
+
+\noindent onde $\text{Fisher}(a) = \frac{\text{Var}(\mu_1,\ldots,\mu_K)}
+{\text{média}(\sigma^2_1,\ldots,\sigma^2_K)}$ mede o quanto as classes
+se afastam em relação ao seu espalhamento interno.
+
+% =============================================================
+\section{Conjuntos de Dados}
+% =============================================================
+
+\subsection{Flor Íris}
+150 amostras, 4 atributos contínuos, 3 classes balanceadas.
+Dataset limpo, sem valores faltantes.
+
+\subsection{Coluna Vertebral}
+310 amostras, 6 atributos biomecânicos contínuos, 3 classes
+ortopédicas. Completamente numérico.
+
+\subsection{Breast Cancer Wisconsin}
+569 amostras, 30 atributos numéricos extraídos de imagens digitais,
+2 classes. Foi utilizada a versão \textit{Diagnostic} (UCI id=17),
+completamente numérica. A versão original (id=14) foi descartada
+por conter atributos categóricos que exigiriam imputação complexa.
+
+\subsection{Dermatology}
+366 amostras, 34 atributos, 6 classes. Valores faltantes foram
+imputados pela média da coluna.
+
+\subsection{Artificial I}
+Dataset sintético gerado com 3 classes gaussianas 2D
+($n=50$ por classe, semente $42$):
+\begin{itemize}
+    \item \textbf{Círculo:} $\boldsymbol{\mu}=(1.0,\,4.0)$, $\sigma=0.5$
+    \item \textbf{Triângulo:} $\boldsymbol{\mu}=(4.0,\,4.0)$, $\sigma=0.5$
+    \item \textbf{Estrela:} $\boldsymbol{\mu}=(2.0,\,2.0)$, $\sigma=0.5$
+\end{itemize}
+
+% =============================================================
+\section{Metodologia}
+% =============================================================
+
+Foram realizadas \textbf{25 realizações} independentes por dataset.
+Em cada realização os dados foram embaralhados e divididos em 80\%
+treino e 20\% teste. Os quatro classificadores foram avaliados sobre
+a mesma divisão. Ao final:
+
+\begin{equation}
+    \bar{A} = \frac{1}{N}\sum_{n=1}^N A_n
+    \qquad
+    \sigma_A = \sqrt{\frac{1}{N}\sum_{n=1}^N(A_n-\bar{A})^2}
+\end{equation}
+
+A matriz de confusão foi extraída da realização com acurácia
+\textbf{mais próxima da média}, por ser a mais representativa.
+
+% =============================================================
+\section{Resultados e Discussão}
+% =============================================================
+
+\subsection{Acurácia Média e Desvio Padrão}
+
+\begin{table}[H]
+    \centering
+    \caption{Resultados experimentais --- 25 realizações, divisão 80/20.}
+    \label{tab:results}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{Base de Dados} & \textbf{Bayesiano} & \textbf{KNN ($k=5$)} & \textbf{DMC} \\
+        \midrule
+        Íris             & $97.5 \pm 3.0$ & $96.3 \pm 2.9$ & $90.9 \pm 4.9$ \\
+        Artificial I     & $99.2 \pm 1.4$ & $99.2 \pm 1.7$ & $99.2 \pm 1.4$ \\
+        Coluna Vertebral & $83.9 \pm 4.5$ & $82.3 \pm 3.3$ & $75.7 \pm 5.5$ \\
+        Breast Cancer    & $88.4 \pm 3.0$ & $93.6 \pm 2.2$ & $87.9 \pm 2.7$ \\
+        Dermatology      & $88.6 \pm 3.8$ & $86.2 \pm 2.9$ & $50.4 \pm 6.2$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Matrizes de Confusão}
+Matriz de confusão de cada dataset com o classificador Bayesiano Multivariado. Buscando a melhor representatividade, foram utilizadas os registros da realização com a taxa de acerto mais próxima da acurácia para montar cada matriz.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{iris-matrix-confusao.png}
+    \caption{Matriz de confusão --- Íris.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{vertebral-matrix-confusao.png}
+    \caption{Matriz de confusão --- Vertebral Column.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{breast-matrix-confusao.png}
+    \caption{Matriz de confusão --- Breast Cancer.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{dermatology-matrix-confusao.png}
+    \caption{Matriz de confusão --- Dermatology.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{artificial-matrix-confusao.png}
+    \caption{Matrix de confusão --- Artificial I.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\subsection{Superfícies de Decisão}
+Superfícies de decisão do Bayesiano Multivariado com gaussianas sobrepostas. Treino~($\bullet$), teste ($\times$).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{iris-superficie-decisao.png}
+\caption{Superfície de decisão --- Íris}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{artificial-superficie-decisao.png}
+\caption{Superfície de decisão --- Artificial I}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{vertebral-superficie-decisao.png}
+\caption{Superfície de decisão --- Vertebral Column.}
+\end{figure}
+
+\subsection{Discussão}
+
+O \textbf{Artificial~I} atingiu acurácia próxima de 100\% em todos os
+classificadores, confirmando que classes gaussianas bem separadas
+representam o cenário ideal para modelos probabilísticos.
+
+Na \textbf{Íris}, o Bayesiano Multivariado ($97.5\%$) supera o DMC
+($90.9\%$) e iguala o KNN ($96.3\%$), beneficiando-se da modelagem
+das correlações entre atributos via $\Sigma_i$.
+
+No \textbf{Breast Cancer}, o KNN ($93.6\%$)
+supera o Bayesiano Multivariado ($88.4\%$). Isso sugere que, com 30
+atributos, a estimativa da matriz de covariância $30\times30$ a partir
+de apenas $\sim$455 amostras de treino introduz ruído prejudicial ---
+um fenômeno conhecido como \textit{curse of dimensionality}.
+
+No \textbf{Dermatology}, o DMC apresenta queda expressiva ($50.4\%$),
+evidenciando que centroides são insuficientes para separar 6 classes
+com distribuições complexas. O Bayesiano Multivariado ($88.6\%$)
+destaca-se como o melhor classificador neste dataset.
+
+% =============================================================
+\section{Conclusão}
+% =============================================================
+
+O Bayesiano Gaussiano Multivariado mostrou-se competitivo em todos os
+datasets, destacando-se especialmente no Dermatology. Sua principal
+limitação aparece em alta dimensionalidade (Breast Cancer), onde a
+estimativa de $\Sigma$ torna-se instável. Os desafios práticos
+encontrados foram:
+
+\begin{itemize}
+    \item \textbf{Overflow no expoente:} resolvido com \textit{clipping}
+          ao intervalo $[-500,500]$;
+    \item \textbf{Matriz singular:} resolvido com regularização de
+          Tikhonov ($\varepsilon=10^{-6}$);
+    \item \textbf{Divisão treino/teste:} garantido mínimo de 1 amostra
+          de teste por realização.
+\end{itemize}
+
+\newpage
+\begin{thebibliography}{9}
+    \bibitem{duda} DUDA, R. O.; HART, P. E.; STORK, D. G\@.
+        \textbf{Pattern Classification}. 2.~ed. Wiley-Interscience, 2001.
+    \bibitem{bishop} BISHOP, C. M\@.
+        \textbf{Pattern Recognition and Machine Learning}. Springer, 2006.
+    \bibitem{uci} DUA, D.; GRAFF, C\@. UCI Machine Learning Repository.
+        Disponível em: \url{https://archive.ics.uci.edu/ml}. Acesso em: \today.
+\end{thebibliography}
+
+\end{document}

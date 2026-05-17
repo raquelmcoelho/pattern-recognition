@@ -1,0 +1,355 @@
+\documentclass[12pt, a4paper]{article}
+
+% ---- Ajustes de Idioma e Fontes Modernas -------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{mathpazo}
+\usepackage[scaled=0.95]{helvet}
+\usepackage{courier}
+
+% ---- Pacotes de Layout e Design ----------------------------
+\usepackage{geometry}
+\geometry{a4paper, top=3cm, bottom=2cm, left=3cm, right=2cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{indentfirst}
+\usepackage{microtype}
+
+% ---- Cores e Hiperlinks ------------------------------------
+\usepackage{xcolor}
+\definecolor{brandblue}{RGB}{44, 62, 80}
+\definecolor{softgray}{RGB}{245, 245, 245}
+\usepackage[colorlinks=true, allcolors=brandblue]{hyperref}
+
+% ---- Elementos Matemáticos e Gráficos ----------------------
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+% ---- Customização de Títulos -------------------------------
+\usepackage{titlesec}
+\titleformat{\section}{\color{brandblue}\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\color{brandblue}\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% =============================================================
+\begin{document}
+% =============================================================
+
+% ---- CAPA ---------------------------------------------------
+\begin{titlepage}
+    \begin{flushleft}
+        \Large \textbf{Instituto Federal do Ceará} \\
+        \large Mestrado em Ciência da Computação \\
+        \small Disciplina: Reconhecimento de Padrões
+    \end{flushleft}
+    \vspace{4cm}
+    \begin{center}
+        \hrule\vspace{0.5cm}
+        {\huge \textbf{\color{brandblue} Classificadores Bayesianos}}\\
+        \vspace{0.2cm}
+        {\Large Trabalho 03: Naive Bayes}
+        \vspace{0.5cm}\hrule
+    \end{center}
+    \vspace{3cm}
+    \begin{flushright}
+        \large \textbf{Raquel Maciel Coelho de Sousa}\\
+        \small Professor: Dr. Ajalmar Rocha Neto
+    \end{flushright}
+    \vfill
+    \begin{center}\small Fortaleza, 11 de maio de 2026 \end{center}
+\end{titlepage}
+
+\newpage
+{\hypersetup{linkcolor=black}\tableofcontents}
+\newpage
+
+% =============================================================
+\section{Introdução}
+% =============================================================
+
+Este relatório descreve a implementação e avaliação do
+\textbf{Classificador Naive Bayes Gaussiano}, desenvolvido como
+complementação ao Trabalho~02 da disciplina de Reconhecimento de
+Padrões. Diferentemente do Bayesiano Multivariado, o Naive Bayes
+assume \textbf{independência condicional} entre os atributos dado
+a classe, simplificando o cálculo da verossimilhança.
+
+O modelo foi treinado e testado sobre os mesmos cinco conjuntos de
+dados: Flor Íris, Coluna Vertebral, Breast Cancer Wisconsin,
+Dermatology e Artificial~I, e seus resultados foram comparados com
+o Bayesiano Multivariado, KNN e DMC.
+
+% =============================================================
+\section{Fundamentação Teórica}
+% =============================================================
+
+\subsection{Teorema de Bayes}
+
+O ponto de partida é o mesmo dos demais classificadores:
+
+\begin{equation}
+    P(C_i \mid \mathbf{x}) =
+    \frac{p(\mathbf{x} \mid C_i)\,P(C_i)}{p(\mathbf{x})}
+\end{equation}
+
+\noindent onde $P(C_i)$ é a probabilidade \textit{a priori},
+$p(\mathbf{x} \mid C_i)$ é a verossimilhança e $p(\mathbf{x})$
+é a evidência normalizadora.
+
+\subsection{Pressuposto de Independência}
+
+A diferença fundamental do Naive Bayes está na modelagem da
+verossimilhança. Assumindo que os atributos são
+\textbf{condicionalmente independentes} dado a classe $C_i$:
+
+\begin{equation}
+    p(\mathbf{x} \mid C_i) =
+    \prod_{j=1}^{d} p(x_j \mid C_i)
+    \label{eq:independencia}
+\end{equation}
+
+Ou seja, a verossimilhança conjunta é o \textbf{produto} das
+verossimilhanças individuais de cada atributo. Isso elimina a
+necessidade de estimar a matriz de covariância — cada atributo é
+modelado por uma gaussiana univariada independente.
+
+\subsection{Gaussiana Univariada por Atributo}
+
+Cada fator $p(x_j \mid C_i)$ é modelado por uma gaussiana 1D:
+
+\begin{equation}
+    p(x_j \mid C_i) =
+    \frac{1}{\sqrt{2\pi\sigma_{ij}^2}}
+    \exp\!\left\{
+        -\frac{(x_j - \mu_{ij})^2}{2\sigma_{ij}^2}
+    \right\}
+\end{equation}
+
+\noindent onde $\mu_{ij}$ e $\sigma_{ij}^2$ são a média e a variância
+do atributo $j$ na classe $C_i$, estimadas diretamente dos dados de
+treino. A posteriori final combina todos os atributos:
+
+\begin{equation}
+    P(C_i \mid \mathbf{x}) \propto
+    P(C_i) \prod_{j=1}^{d}
+    \frac{1}{\sqrt{2\pi\sigma_{ij}^2}}
+    \exp\!\left\{
+        -\frac{(x_j - \mu_{ij})^2}{2\sigma_{ij}^2}
+    \right\}
+\end{equation}
+
+\subsection{Comparação com o Bayesiano Multivariado}
+
+A tabela abaixo resume as diferenças estruturais entre os dois modelos:
+
+\begin{table}[H]
+    \centering
+    \caption{Naive Bayes vs.\ Bayesiano Multivariado.}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        \textbf{Aspecto} & \textbf{Naive Bayes} & \textbf{Multivariado} \\
+        \midrule
+        Verossimilhança   & Produto de gaussianas 1D & Gaussiana $d$-dimensional \\
+        Parâmetros por classe & $2d$ (pois $\mu_j$, $\sigma^2_j$) & $\approx\frac{d^2}{2}$ (pois $\boldsymbol{\mu}$, $\Sigma$) \\
+        Correlações       & Ignoradas & Capturadas em $\Sigma$ \\
+        Singularidade     & Não ocorre & Possível (regularização) \\
+        Custo computacional & Baixo & Alto (inversão de $\Sigma$) \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Classificadores de Referência}
+
+\textbf{DMC} — classifica pelo centroide mais próximo em distância
+euclidiana: $\hat{C} = \arg\min_{C_i}\|\mathbf{x}-\boldsymbol{c}_i\|_2$.
+
+\textbf{KNN} ($k=5$) — voto majoritário entre os $k$ vizinhos mais
+próximos no conjunto de treino.
+
+\subsection{Escolha do Par de Atributos para Visualização}
+
+O par foi selecionado pelo critério de Fisher:
+
+\begin{equation}
+    \text{score}(a_1,a_2) =
+    \text{Fisher}(a_1)+\text{Fisher}(a_2)
+\end{equation}
+
+% =============================================================
+\section{Conjuntos de Dados}
+% =============================================================
+
+\subsection{Flor Íris}
+150 amostras, 4 atributos contínuos, 3 classes balanceadas.
+Dataset limpo, sem valores faltantes.
+
+\subsection{Coluna Vertebral}
+310 amostras, 6 atributos biomecânicos contínuos, 3 classes
+ortopédicas. Completamente numérico.
+
+\subsection{Breast Cancer Wisconsin}
+569 amostras, 30 atributos numéricos, 2 classes. Versão
+\textit{Diagnostic} (UCI id=17).
+
+\subsection{Dermatology}
+366 amostras, 34 atributos, 6 classes. Valores faltantes imputados
+pela média.
+
+\subsection{Artificial I}
+Dataset sintético gerado com 3 classes gaussianas 2D
+($n=50$ por classe, semente $42$):
+\begin{itemize}
+    \item \textbf{Círculo:} $\boldsymbol{\mu}=(1.0,\,4.0)$, $\sigma=0.5$
+    \item \textbf{Triângulo:} $\boldsymbol{\mu}=(4.0,\,4.0)$, $\sigma=0.5$
+    \item \textbf{Estrela:} $\boldsymbol{\mu}=(2.0,\,2.0)$, $\sigma=0.5$
+\end{itemize}
+
+% =============================================================
+\section{Metodologia}
+% =============================================================
+
+Foram realizadas \textbf{25 realizações} independentes por dataset,
+com divisão 80\% treino e 20\% teste. A matriz de confusão foi
+extraída da realização com acurácia \textbf{mais próxima da média}.
+As superfícies de decisão foram geradas pelo Naive Bayes sobre o
+par de atributos selecionado pelo critério de Fisher.
+
+% =============================================================
+\section{Resultados e Discussão}
+% ============================================================
+
+\subsection{Acurácia Média e Desvio Padrão}
+
+\begin{table}[H]
+    \centering
+    \caption{Resultados experimentais --- 25 realizações, divisão 80/20.}
+    \label{tab:results}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{Base de Dados} & \textbf{Naive Bayes} & \textbf{Bayesiano} & \textbf{KNN ($k=5$)} & \textbf{DMC} \\
+        \midrule
+        Íris             & $94.8 \pm 4.3$ & $97.5 \pm 3.0$ & $96.3 \pm 2.9$ & $90.9 \pm 4.9$ \\
+        Artificial I     & $99.5 \pm 1.2$ & $99.2 \pm 1.4$ & $99.2 \pm 1.7$ & $99.2 \pm 1.4$ \\
+        Coluna Vertebral & $83.0 \pm 4.4$ & $83.9 \pm 4.5$ & $82.3 \pm 3.3$ & $75.7 \pm 5.5$ \\
+        Breast Cancer    & $93.8 \pm 1.9$ & $88.4 \pm 3.0$ & $93.6 \pm 2.2$ & $87.9 \pm 2.7$ \\
+        Dermatology      & $84.9 \pm 4.4$ & $88.6 \pm 3.8$ & $86.2 \pm 2.9$ & $50.4 \pm 6.2$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Matrizes de Confusão}
+Matriz de confusão de cada dataset com o classificador Naive Bayes. Buscando a melhor representatividade, foram utilizados os registros da realização com a taxa de acerto mais próxima da acurácia para montar cada matriz.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{iris-matrix-confusao.png}
+    \caption{Matriz de confusão --- Íris.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{vertebral-matrix-confusao.png}
+    \caption{Matriz de confusão --- Vertebral Column.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{breast-matrix-confusao.png}
+    \caption{Matriz de confusão --- Breast Cancer.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{dermatology-matrix-confusao.png}
+    \caption{Matriz de confusão --- Dermatology.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{artificial-matrix-confusao.png}
+    \caption{Matrix de confusão --- Artificial I.}
+    \label{fig:conf_multi}
+\end{figure}
+
+\subsection{Superfícies de Decisão}
+Superfícies de decisão do Naive Bayes com gaussianas univariadas sobrepostas. Treino~($\bullet$), teste~($\times$).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{iris-superficie-decisao.png}
+\caption{Superfície de decisão --- Íris}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{artificial-superficie-decisao.png}
+\caption{Superfície de decisão --- Artificial I}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{vertebral-superficie-decisao.png}
+\caption{Superfície de decisão --- Vertebral Column.}
+\end{figure}
+
+\subsection{Discussão}
+
+O \textbf{Naive Bayes} demonstrou desempenho surpreendentemente
+competitivo dada sua simplicidade. Seu destaque foi o
+\textbf{Breast Cancer} ($93.8\%$), onde superou o Bayesiano
+Multivariado ($88.4\%$). Isso ocorre porque, com 30 atributos e
+$\sim$455 amostras de treino, a estimativa da matriz de covariância
+$30\times30$ é ruidosa — o pressuposto de independência do Naive
+Bayes evita esse problema ao custo de ignorar correlações.
+
+No \textbf{Artificial~I} ($99.5\%$), o Naive Bayes apresentou o
+melhor resultado absoluto: como as classes foram geradas com covariância
+isotrópica (desvio padrão igual em ambas as direções), a ausência de
+correlações entre atributos é exatamente satisfeita — o pressuposto
+de independência é válido neste caso.
+
+Na \textbf{Íris} ($94.8\%$), o Naive Bayes fica ligeiramente abaixo
+do Bayesiano Multivariado ($97.5\%$) e do KNN ($96.3\%$), pois os
+atributos da pétala são correlacionados entre classes e essa informação
+é ignorada.
+
+No \textbf{Dermatology} ($84.9\%$), o Bayesiano Multivariado
+($88.6\%$) leva vantagem por capturar a estrutura conjunta das 6 classes.
+O DMC colapsa para $50.4\%$, evidenciando que centroides únicos não
+capturam a complexidade desse dataset.
+
+% =============================================================
+\section{Conclusão}
+% =============================================================
+
+O Naive Bayes mostrou-se uma escolha eficaz e eficiente, especialmente
+em alta dimensionalidade (Breast Cancer) onde o Bayesiano Multivariado
+sofre com estimativas ruidosas da matriz de covariância. O pressuposto
+de independência, embora raramente verdadeiro, produz fronteiras de
+decisão robustas na prática.
+
+Comparado aos demais: supera o DMC em todos os datasets; equipara-se
+ao KNN; perde para o Bayesiano Multivariado quando as correlações entre
+atributos são informativas (Íris, Dermatology). Sua principal vantagem
+é o custo computacional reduzido — estima $2d$ parâmetros por classe
+contra $\approx d^2/2$ do Multivariado.
+
+\newpage
+\begin{thebibliography}{9}
+    \bibitem{duda} DUDA, R. O.; HART, P. E.; STORK, D. G\@.
+        \textbf{Pattern Classification}. 2.~ed. Wiley-Interscience, 2001.
+    \bibitem{bishop} BISHOP, C. M\@.
+        \textbf{Pattern Recognition and Machine Learning}. Springer, 2006.
+    \bibitem{uci} DUA, D.; GRAFF, C\@. UCI Machine Learning Repository.
+        Disponível em: \url{https://archive.ics.uci.edu/ml}. Acesso em: \today.
+\end{thebibliography}
+
+\end{document}
