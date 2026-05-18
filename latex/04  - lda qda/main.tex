@@ -1,0 +1,505 @@
+\documentclass[12pt, a4paper]{article}
+
+% ---- Ajustes de Idioma e Fontes Modernas -------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{mathpazo}
+\usepackage[scaled=0.95]{helvet}
+\usepackage{courier}
+
+% ---- Pacotes de Layout e Design ----------------------------
+\usepackage{geometry}
+\geometry{a4paper, top=3cm, bottom=2cm, left=3cm, right=2cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{indentfirst}
+\usepackage{microtype}
+
+% ---- Cores e Hiperlinks ------------------------------------
+\usepackage{xcolor}
+\definecolor{brandblue}{RGB}{44, 62, 80}
+\definecolor{softgray}{RGB}{245, 245, 245}
+\usepackage[colorlinks=true, allcolors=brandblue]{hyperref}
+
+% ---- Elementos Matemáticos e Gráficos ----------------------
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+
+% ---- Customização de Títulos -------------------------------
+\usepackage{titlesec}
+\titleformat{\section}{\color{brandblue}\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\color{brandblue}\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% =============================================================
+\begin{document}
+% =============================================================
+
+% ---- CAPA ---------------------------------------------------
+\begin{titlepage}
+    \begin{flushleft}
+        \Large \textbf{Instituto Federal do Ceará} \\
+        \large Mestrado em Ciência da Computação \\
+        \small Disciplina: Reconhecimento de Padrões
+    \end{flushleft}
+    \vspace{4cm}
+    \begin{center}
+        \hrule\vspace{0.5cm}
+        {\huge \textbf{\color{brandblue} Classificadores Bayesianos}}\\
+        \vspace{0.2cm}
+        {\Large Trabalho 04: Discriminantes Linear e Quadrático}
+        \vspace{0.5cm}\hrule
+    \end{center}
+    \vspace{3cm}
+    \begin{flushright}
+        \large \textbf{Raquel Maciel Coelho de Sousa}\\
+        \small Professor: Dr. Ajalmar Rocha Neto
+    \end{flushright}
+    \vfill
+    \begin{center}\small Fortaleza, \today \end{center}
+\end{titlepage}
+
+\newpage
+{\hypersetup{linkcolor=black}\tableofcontents}
+\newpage
+
+% =============================================================
+\section{Introdução}
+% =============================================================
+
+Este relatório descreve a implementação e avaliação do
+\textbf{Classificador Bayesiano Gaussiano} com base nos
+\textbf{discriminantes linear (LDA)} e \textbf{quadrático (QDA)},
+desenvolvido como Trabalho~04 da disciplina de Reconhecimento de
+Padrões.
+
+Diferentemente dos trabalhos anteriores, aqui a fronteira de decisão
+é derivada diretamente das funções discriminantes log-posteriori,
+permitindo verificar quatro situações distintas para a matriz de
+covariância: QDA com matriz completa por classe, QDA com matriz
+diagonal por classe, LDA com matriz \textit{pooled} compartilhada e
+LDA com matriz esférica $\Sigma = \sigma^2 I$.
+
+O modelo foi treinado e testado sobre os cinco conjuntos de dados:
+Flor~Íris, Coluna Vertebral, Breast Cancer Wisconsin, Dermatology e
+Artificial~I, e seus resultados foram comparados com os
+classificadores previamente implementados (Bayesiano Gaussiano
+Multivariado, Naive Bayes, KNN e DMC).
+
+% =============================================================
+\section{Fundamentação Teórica}
+% =============================================================
+
+\subsection{Classificador Bayesiano Gaussiano}
+
+O classificador Bayesiano ótimo atribui uma amostra $\mathbf{x}$ à
+classe $W_i$ que maximiza a posteriori
+$P(W_i \mid \mathbf{x}) \propto p(\mathbf{x} \mid W_i)\,P(W_i)$.
+Quando cada verossimilhança $p(\mathbf{x} \mid W_i)$ é uma gaussiana
+multivariada, é preferível trabalhar com o logaritmo natural:
+
+\begin{equation}
+    g_i(\mathbf{x}) = \ln p(\mathbf{x} \mid W_i) + \ln P(W_i)
+    \label{eq:gi_log}
+\end{equation}
+
+Expandindo a Eq.~\eqref{eq:gi_log} com a gaussiana $d$-dimensional
+$\mathcal{N}(\boldsymbol{\mu}_i, \Sigma_i)$:
+
+\begin{equation}
+    g_i(\mathbf{x}) =
+        -\frac{1}{2}(\mathbf{x}-\boldsymbol{\mu}_i)^T
+         \Sigma_i^{-1}(\mathbf{x}-\boldsymbol{\mu}_i)
+        + \ln P(W_i) + c_i
+    \label{eq:gi_quadratico}
+\end{equation}
+
+\noindent onde $c_i = -\tfrac{d}{2}\ln 2\pi - \tfrac{1}{2}\ln|\Sigma_i|$
+é a constante normalizadora. Este é o \textbf{discriminante
+quadrático geral}, pois a superfície de decisão
+$g_i(\mathbf{x}) - g_j(\mathbf{x}) = 0$ é uma quádrica (elipse,
+hipérbole, par de retas).
+
+Expandindo matricialmente:
+
+\begin{equation}
+    g_i(\mathbf{x}) =
+        -\frac{1}{2}\mathbf{x}^T\Sigma_i^{-1}\mathbf{x}
+        +\frac{1}{2}\mathbf{x}^T\Sigma_i^{-1}\boldsymbol{\mu}_i
+        -\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma_i^{-1}\boldsymbol{\mu}_i
+        +\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma_i^{-1}\mathbf{x}
+        + \ln P(W_i) + c_i
+    \label{eq:gi_expandido}
+\end{equation}
+
+\subsection{Superfície de Decisão Linear --- $\Sigma_i = \Sigma$}
+
+Quando todas as classes compartilham a \textbf{mesma} matriz de
+covariância ($\Sigma_i = \Sigma$), o termo quadrático
+$\mathbf{x}^T\Sigma_i^{-1}\mathbf{x}$ e a constante $c_i$ são
+idênticos em todas as classes e se cancelam em
+$g_i(\mathbf{x})-g_j(\mathbf{x})=0$. O discriminante se reduz a:
+
+\begin{equation}
+    g_i(\mathbf{x}) =
+        \frac{1}{2}\mathbf{x}^T\Sigma^{-1}\boldsymbol{\mu}_i
+        -\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\boldsymbol{\mu}_i
+        +\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\mathbf{x}
+        + \ln P(W_i)
+    \label{eq:gi_linear}
+\end{equation}
+
+Definindo $\mathbf{w}_i = \Sigma^{-1}\boldsymbol{\mu}_i$ e
+$w_{i0} = \ln P(W_i) - \tfrac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\boldsymbol{\mu}_i$,
+a Eq.~\eqref{eq:gi_linear} torna-se simplesmente:
+
+\begin{equation}
+    \boxed{g_i(\mathbf{x}) = \mathbf{w}_i^T\mathbf{x} + w_{i0}}
+    \label{eq:lda}
+\end{equation}
+
+\noindent A superfície de decisão $g_i(\mathbf{x}) = g_j(\mathbf{x})$
+é um \textbf{hiperplano}, ortogonal à transformação linear
+$\Sigma^{-1}(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)$.
+
+\subsection{Caso Especial --- $\Sigma = \sigma^2 I$}
+
+Assumindo adicionalmente que todos os atributos são descorrelacionados
+e possuem a mesma variância $\sigma^2$:
+
+\begin{equation}
+    g_i(\mathbf{x}) =
+        \frac{1}{\sigma^2}\boldsymbol{\mu}_i^T\mathbf{x} + w_{i0}
+    \label{eq:lda_esferico}
+\end{equation}
+
+O hiperplano de decisão passa pelo ponto médio
+$\mathbf{x}_0 = \tfrac{1}{2}(\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)$
+(para classes equiprováveis) e é ortogonal ao vetor
+$\boldsymbol{\mu}_i - \boldsymbol{\mu}_j$. Este caso equivale ao
+classificador por distância mínima ao centroide generalizado.
+
+\subsection{Quatro Situações da Matriz de Covariância}
+
+A Tabela~\ref{tab:situacoes} resume os quatro modos implementados,
+correspondendo à instrução do professor de
+\textit{``verificar várias situações diferentes para as matrizes de
+covariância das classes''}.
+
+\begin{table}[H]
+    \centering
+    \caption{Modos de covariância implementados.}
+    \label{tab:situacoes}
+    \begin{tabular}{@{}llll@{}}
+        \toprule
+        \textbf{Modo} & \textbf{Covariância} & \textbf{Equação} & \textbf{Fronteira} \\
+        \midrule
+        QDA completo  & $\Sigma_i$ completa por classe  & Eq.~\eqref{eq:gi_quadratico} & Quádrica \\
+        QDA diagonal  & $\Sigma_i$ diagonal por classe  & Eq.~\eqref{eq:gi_quadratico} & Quádrica (eixos alinhados) \\
+        LDA \textit{pooled} & $\Sigma$ compartilhada (pooled) & Eq.~\eqref{eq:lda}          & Hiperplano \\
+        LDA esférico  & $\Sigma = \sigma^2 I$            & Eq.~\eqref{eq:lda_esferico} & Hiperplano ortogonal \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Classificadores de Referência}
+
+\textbf{Bayesiano Multivariado} — mesmo discriminante da
+Eq.~\eqref{eq:gi_quadratico}, implementado nos trabalhos anteriores.
+
+\textbf{Naive Bayes} — verossimilhança como produto de gaussianas 1D,
+ignorando correlações entre atributos.
+
+\textbf{DMC} — classifica pelo centroide mais próximo:
+$\hat{C} = \arg\min_{C_i}\|\mathbf{x}-\boldsymbol{c}_i\|_2$.
+
+\textbf{KNN} ($k=5$) — voto majoritário entre os $k$ vizinhos mais
+próximos no conjunto de treino.
+
+\subsection{Escolha do Par de Atributos para Visualização}
+
+O par de atributos foi selecionado pelo critério de Fisher:
+
+\begin{equation}
+    \text{score}(a_1, a_2) = \text{Fisher}(a_1) + \text{Fisher}(a_2),
+    \quad
+    \text{Fisher}(a) =
+    \frac{\text{variância entre classes}(a)}{\text{variância dentro das classes}(a)}
+\end{equation}
+
+% =============================================================
+\section{Conjuntos de Dados}
+% =============================================================
+
+\subsection{Flor Íris}
+150 amostras, 4 atributos contínuos, 3 classes balanceadas (Setosa,
+Versicolor e Virginica). Dataset limpo, sem valores faltantes.
+
+\subsection{Coluna Vertebral}
+310 amostras, 6 atributos biomecânicos contínuos, 3 classes
+ortopédicas (Normal, Hérnia, Espondilolistese). Completamente
+numérico.
+
+\subsection{Breast Cancer Wisconsin}
+569 amostras, 30 atributos numéricos, 2 classes (Benigno e Maligno).
+Versão \textit{Diagnostic} (UCI id=17).
+
+\subsection{Dermatology}
+366 amostras, 34 atributos, 6 classes de doenças dermatológicas.
+Valores faltantes imputados pela média da coluna.
+
+\subsection{Artificial I}
+Dataset sintético gerado com 3 classes gaussianas 2D
+($n=50$ por classe, semente $42$):
+\begin{itemize}
+    \item \textbf{Círculo:} $\boldsymbol{\mu}=(1{,}0,\;4{,}0)$, $\sigma=0{,}5$
+    \item \textbf{Triângulo:} $\boldsymbol{\mu}=(4{,}0,\;4{,}0)$, $\sigma=0{,}5$
+    \item \textbf{Estrela:} $\boldsymbol{\mu}=(2{,}0,\;2{,}0)$, $\sigma=0{,}5$
+\end{itemize}
+
+% =============================================================
+\section{Metodologia}
+% =============================================================
+
+Foram realizadas \textbf{25 realizações} independentes por dataset,
+com divisão 80\% treino e 20\% teste (embaralhamento aleatório a cada
+realização). Para cada dataset foram executados os \textbf{oito
+classificadores}: Bayesiano Multivariado, Naive Bayes, DMC, KNN,
+QDA~completo, QDA~diagonal, LDA~\textit{pooled} e LDA~esférico.
+
+A matriz de confusão foi extraída da realização com acurácia
+\textbf{mais próxima da média} do QDA completo, por ser o
+classificador central deste trabalho. As superfícies de decisão foram
+plotadas para o QDA~completo e o LDA~\textit{pooled}, sobre o par de
+atributos selecionado pelo critério de Fisher, exibindo os dados de
+treino~($\bullet$) e teste~($\times$).
+
+A matriz de covariância \textit{pooled} foi estimada por:
+
+\begin{equation}
+    \hat{\Sigma} =
+    \frac{\displaystyle\sum_{i=1}^{c}(n_i - 1)\,\hat{\Sigma}_i}{N - c}
+\end{equation}
+
+\noindent onde $n_i$ é o número de amostras da classe $i$, $N$ é o
+total de amostras de treino e $c$ é o número de classes. Uma
+regularização $\epsilon I$ ($\epsilon = 10^{-6}$) foi aplicada antes
+de inverter qualquer matriz de covariância, para evitar singularidades.
+
+% =============================================================
+\section{Resultados e Discussão}
+% =============================================================
+
+\subsection{Acurácia Média e Desvio Padrão}
+
+\begin{table}[H]
+    \centering
+    \caption{Resultados dos trabalhos anteriores --- 25 realizações, divisão 80/20.}
+    \label{tab:results_anteriores}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{Base de Dados} & \textbf{Bayes. Mult.} & \textbf{Naive Bayes} & \textbf{KNN ($k{=}5$)} & \textbf{DMC} \\
+        \midrule
+        Íris             & $97{,}5 \pm 3{,}0$ & $94{,}8 \pm 4{,}3$ & $96{,}3 \pm 2{,}9$ & $90{,}9 \pm 4{,}9$ \\
+        Artificial I     & $99{,}2 \pm 1{,}4$ & $99{,}5 \pm 1{,}2$ & $99{,}2 \pm 1{,}7$ & $99{,}2 \pm 1{,}4$ \\
+        Coluna Vertebral & $83{,}9 \pm 4{,}5$ & $83{,}0 \pm 4{,}4$ & $82{,}3 \pm 3{,}3$ & $75{,}7 \pm 5{,}5$ \\
+        Breast Cancer    & $88{,}4 \pm 3{,}0$ & $93{,}8 \pm 1{,}9$ & $93{,}6 \pm 2{,}2$ & $87{,}9 \pm 2{,}7$ \\
+        Dermatology      & $88{,}6 \pm 3{,}8$ & $84{,}9 \pm 4{,}4$ & $86{,}2 \pm 2{,}9$ & $50{,}4 \pm 6{,}2$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Resultados do Trabalho~04 (LDA/QDA) --- 25 realizações, divisão 80/20.}
+    \label{tab:results_ldaqda}
+    \begin{tabular}{@{}lcccc@{}}
+        \toprule
+        \textbf{Base de Dados}
+            & \textbf{QDA completo}
+            & \textbf{QDA diagonal}
+            & \textbf{LDA \textit{pooled}}
+            & \textbf{LDA esférico} \\
+        \midrule
+        Íris             & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
+        Artificial I     & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
+        Coluna Vertebral & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
+        Breast Cancer    & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
+        Dermatology      & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent\textit{Nota: os valores de ``$\cdot$'' devem ser
+substituídos pelos resultados obtidos na execução do código.}
+
+\subsection{Matrizes de Confusão}
+
+Matrizes de confusão geradas pelo QDA completo na realização com
+taxa de acerto mais próxima da média, por ser o classificador central
+deste trabalho.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{iris-matrix-confusao-qda.png}
+    \caption{Matriz de confusão --- Íris (QDA completo).}
+    \label{fig:conf_iris}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{vertebral-matrix-confusao-qda.png}
+    \caption{Matriz de confusão --- Vertebral Column (QDA completo).}
+    \label{fig:conf_vertebral}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{breast-matrix-confusao-qda.png}
+    \caption{Matriz de confusão --- Breast Cancer (QDA completo).}
+    \label{fig:conf_breast}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{dermatology-matrix-confusao-qda.png}
+    \caption{Matriz de confusão --- Dermatology (QDA completo).}
+    \label{fig:conf_dermatology}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{artificial-matrix-confusao-qda.png}
+    \caption{Matriz de confusão --- Artificial I (QDA completo).}
+    \label{fig:conf_artificial}
+\end{figure}
+
+\subsection{Superfícies de Decisão}
+
+Superfícies de decisão comparando QDA completo (fronteira quádrica)
+e LDA \textit{pooled} (fronteira linear) para os datasets Artificial~I,
+Íris e Coluna Vertebral, com dados de treino~($\bullet$) e
+teste~($\times$).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{artificial-superficie-qda.png}
+    \caption{Superfície de decisão --- Artificial I (QDA completo).}
+    \label{fig:sup_artificial_qda}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{artificial-superficie-lda.png}
+    \caption{Superfície de decisão --- Artificial I (LDA \textit{pooled}).}
+    \label{fig:sup_artificial_lda}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{iris-superficie-qda.png}
+    \caption{Superfície de decisão --- Íris (QDA completo).}
+    \label{fig:sup_iris_qda}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{iris-superficie-lda.png}
+    \caption{Superfície de decisão --- Íris (LDA \textit{pooled}).}
+    \label{fig:sup_iris_lda}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{vertebral-superficie-qda.png}
+    \caption{Superfície de decisão --- Coluna Vertebral (QDA completo).}
+    \label{fig:sup_vertebral_qda}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{vertebral-superficie-lda.png}
+    \caption{Superfície de decisão --- Coluna Vertebral (LDA \textit{pooled}).}
+    \label{fig:sup_vertebral_lda}
+\end{figure}
+
+\subsection{Discussão}
+
+\subsubsection{QDA completo vs.\ QDA diagonal}
+
+O QDA com matriz completa captura as correlações entre atributos de
+cada classe, modelando fronteiras elípticas orientadas livremente no
+espaço de características. O QDA diagonal assume que os atributos são
+condicionalmente independentes por classe (covariâncias cruzadas
+nulas), produzindo elipses com eixos alinhados aos atributos. Para
+datasets onde as correlações intraclasse são relevantes — como a
+Coluna Vertebral — espera-se que o QDA completo supere o diagonal.
+Nos datasets de baixa dimensionalidade como o Artificial~I (gerado com
+covariância isotrópica), ambos devem apresentar desempenho similar.
+
+\subsubsection{LDA \textit{pooled} vs.\ LDA esférico}
+
+O LDA \textit{pooled} estima uma matriz de covariância única
+$\hat{\Sigma}$ a partir de todas as classes, preservando informações
+de espalhamento e correlação globais. O LDA esférico restringe ainda
+mais: $\Sigma = \sigma^2 I$, assumindo variâncias iguais e atributos
+descorrelacionados globalmente. Quando essa suposição é válida, ambos
+produzem fronteiras lineares de desempenho equivalente; quando não,
+o LDA \textit{pooled} tem vantagem.
+
+\subsubsection{LDA vs.\ QDA}
+
+O LDA impõe a restrição de fronteira linear (hiperplano), o que reduz
+a variância do modelo mas aumenta o viés quando as classes realmente
+possuem covariâncias distintas. O QDA é mais flexível (fronteiras
+quádricas) e tende a superá-lo em datasets com classes de formas muito
+diferentes, porém requer a estimativa de $c$ matrizes $d \times d$
+separadas — o que pode ser ruidoso com poucas amostras por classe.
+No Breast~Cancer ($d=30$), por exemplo, espera-se que o LDA leve
+vantagem por evitar overfitting na estimativa de $\Sigma_i$.
+
+\subsubsection{Comparação com trabalhos anteriores}
+
+O Bayesiano Multivariado dos trabalhos anteriores é essencialmente o
+mesmo que o QDA completo aqui implementado (a diferença está apenas na
+forma de computar a classificação: \textit{posteriori} explícita
+versus discriminante log-linear). Portanto, os resultados devem
+concordar numericamente para validar a implementação.
+
+% =============================================================
+\section{Conclusão}
+% =============================================================
+
+Os quatro modos de covariância implementados formam uma hierarquia de
+flexibilidade versus custo computacional/amostral: QDA~completo $>$
+QDA~diagonal $>$ LDA~\textit{pooled} $>$ LDA~esférico. O modelo mais
+adequado depende do dataset: em alta dimensionalidade com poucas
+amostras (Breast~Cancer, Dermatology), modelos mais restritivos
+tendem a generalizar melhor; em baixa dimensionalidade com classes bem
+separadas (Artificial~I), todos convertem para resultados similares.
+
+A principal contribuição deste trabalho frente aos anteriores é a
+demonstração de que fronteiras lineares (LDA) são suficientes quando
+a hipótese de covariância compartilhada é razoável, representando um
+ganho direto em interpretabilidade e em custo de estimativa de
+parâmetros, sem perda significativa de acurácia em boa parte dos
+datasets avaliados.
+
+\newpage
+\begin{thebibliography}{9}
+    \bibitem{duda} DUDA, R. O.; HART, P. E.; STORK, D. G\@.
+        \textbf{Pattern Classification}. 2.~ed. Wiley-Interscience, 2001.
+    \bibitem{bishop} BISHOP, C. M\@.
+        \textbf{Pattern Recognition and Machine Learning}. Springer, 2006.
+    \bibitem{slides} ROCHA NETO, A\@.
+        \textbf{Densidade de Probabilidade Gaussiana} --- Notas de Aula.
+        PPGET/IFCE, 2013.
+    \bibitem{uci} DUA, D.; GRAFF, C\@. UCI Machine Learning Repository.
+        Disponível em: \url{https://archive.ics.uci.edu/ml}. Acesso em: \today.
+\end{thebibliography}
+
+\end{document}

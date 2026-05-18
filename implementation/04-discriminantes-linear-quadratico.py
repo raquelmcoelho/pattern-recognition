@@ -1,5 +1,5 @@
 # =============================================================
-# CLASSIFICADOR NAIVE BAYES
+# DISCRIMINANTES LINEAR (LDA) E QUADRÁTICO (QDA)
 # =============================================================
 # Aluna: Raquel Maciel Coelho de Sousa
 # Dataset:
@@ -10,7 +10,7 @@
 #   5. Artificial I
 #
 # Descrição: Implementação e comparação de quatro classificadores:
-#            Naive Bayes, Bayesiano Gaussiano Multivariado, KNN e DMC.
+#            LDA, QDA, KNN e DMC.
 #
 # Estrutura:
 #   1. Imports
@@ -245,6 +245,146 @@ def treinar_dmc(dados_treino, classes):
     return centroides
 
 
+# =============================================================
+#  DISCRIMINANTES LINEAR (LDA) E QUADRÁTICO (QDA)
+# =============================================================
+#
+# Situações de matriz de covariância:
+#
+#  MODO "qda_full"    →  Σᵢ individual por classe,
+#                        forma completa não-diagonal.
+#                        g_i(x) = -½(x-μᵢ)ᵀΣᵢ⁻¹(x-μᵢ) + ln p(Wᵢ) + cᵢ
+#
+#  MODO "qda_diag"    → mesma equação porém Σᵢ forçada diagonal
+#                        (zera covariâncias cruzadas entre atributos).
+#                        Assume independência condicional por classe.
+#
+#  MODO "lda"         → Σ compartilhada (pooled) → discriminante linear.
+#                        g_i(x) = wᵢᵀx + wᵢ₀
+#                        wᵢ = Σ⁻¹μᵢ,  wᵢ₀ = ln p(Wᵢ) - ½μᵢᵀΣ⁻¹μᵢ
+#
+#  MODO "lda_esferico" → Σ = σ²I (mesma variância em todos os eixos).
+#                        g_i(x) = (1/σ²)μᵢᵀx + wᵢ₀
+#                        É o caso mais simples; superfície de decisão é
+#                        hiperplano ortogonal a μᵢ − μⱼ.
+# =============================================================
+
+EPSILON = 1e-6  # regularização para evitar matriz singular
+
+
+def regularizar(sigma):
+    """Adiciona pequena perturbação na diagonal para garantir invertibilidade."""
+    d = sigma.shape[0]
+    return sigma + EPSILON * np.eye(d)
+
+
+def pooled_covariance(dados_treino, classes):
+    """
+    Calcula a matriz de covariância pooled (compartilhada entre classes).
+    Fórmula: Σ = Σᵢ [ (nᵢ-1) * Σᵢ ] / (N - C)
+    onde nᵢ = nº amostras da classe i, N = total, C = nº classes.
+    """
+    atributos = list(dados_treino.columns[:-1])
+    N = len(dados_treino)
+    C = len(classes)
+
+    acumulador = np.zeros((len(atributos), len(atributos)))
+    for classe in classes:
+        filtro = dados_treino[dados_treino["target"] == classe]
+        ni = len(filtro)
+        sigma_i = matriz_covariancia_dxd(atributos, filtro)
+        acumulador += (ni - 1) * sigma_i
+
+    return acumulador / max(N - C, 1)
+
+
+def treinar_qda(dados_treino, classes, modo="qda_full"):
+    """
+    Treina o classificador QDA.
+
+    Parâmetros
+    ----------
+    modo : "qda_full"  → Σᵢ completa por classe
+           "qda_diag"  → Σᵢ diagonal por classe (covariâncias cruzadas = 0)
+
+    Retorna modelo com:
+        'a_prioris':   { classe: probabilidade_a_priori },
+        'medias':      { classe: [u1, u2, ..., ud] },
+        'covariancias':{ classe: np.array dxd }
+        'modo'        : str
+    """
+    modelo = {"a_prioris": {}, "medias": {}, "covariancias": {}, "modo": modo}
+    atributos = list(dados_treino.columns[:-1])
+
+    for classe in classes:
+        filtro = dados_treino[dados_treino["target"] == classe]
+        modelo["a_prioris"][classe] = len(filtro) / len(dados_treino)
+        modelo["medias"][classe] = np.array([media(filtro[a].values) for a in atributos])
+
+        sigma = matriz_covariancia_dxd(atributos, filtro)
+
+        if modo == "qda_diag":
+            # força diagonal: mantém só as variâncias, anula covariâncias
+            sigma = np.diag(np.diag(sigma))
+
+        modelo["covariancias"][classe] = sigma
+
+    return modelo
+
+
+def treinar_lda(dados_treino, classes, modo="lda"):
+    """
+    Treina o classificador LDA.
+
+    Parâmetros
+    ----------
+    modo : "lda"        → pooled covariance Σ (compartilhada)
+           "lda_esferico" → Σ = σ²I, onde σ² = média das variâncias pooled
+
+    Retorna modelo com:
+        'a_prioris': { classe: probabilidade_a_priori }
+        'medias'   : { classe: [u1, u2, ..., ud] }
+        'w'        : { classe: np.array }    ← vetor de pesos wᵢ = Σ⁻¹μᵢ
+        'w0'       : { classe: float }       ← bias wᵢ₀
+        'sigma'    : np.array dxd            ← Σ usada
+        'modo'     : str
+    """
+    modelo = {"a_prioris": {}, "medias": {}, "w": {}, "w0": {}, "modo": modo}
+    atributos = list(dados_treino.columns[:-1])
+
+    sigma_pooled = pooled_covariance(dados_treino, classes)
+
+    if modo == "lda_esferico":
+        # Σ = σ²I  onde σ² é a variância média da diagonal pooled
+        sigma2 = float(np.mean(np.diag(sigma_pooled)))
+        sigma2 = max(sigma2, EPSILON)
+        d = sigma_pooled.shape[0]
+        sigma_pooled = sigma2 * np.eye(d)
+
+    sigma_reg = regularizar(sigma_pooled)
+    sigma_inv = np.linalg.inv(sigma_reg)
+    modelo["sigma"] = sigma_pooled
+
+    for classe in classes:
+        filtro = dados_treino[dados_treino["target"] == classe]
+        ni = len(filtro)
+        N  = len(dados_treino)
+
+        modelo["a_prioris"][classe] = ni / N
+        mu = np.array([media(filtro[a].values) for a in atributos])
+        modelo["medias"][classe] = mu
+
+        # wᵢ = Σ⁻¹μᵢ  (Simplificação linear)
+        w = sigma_inv @ mu
+        # wᵢ₀ = ln p(Wᵢ) - ½ μᵢᵀ Σ⁻¹ μᵢ
+        w0 = np.log(max(ni / N, EPSILON)) - 0.5 * float(mu @ sigma_inv @ mu)
+
+        modelo["w"][classe] = w
+        modelo["w0"][classe] = w0
+
+    return modelo
+
+
 # ---- 5. CLASSIFICAÇÃO ---------------------------------------
 
 def classificar_bayes(linha_teste, modelo, classes):
@@ -302,6 +442,61 @@ def classificar_dmc(linha_teste, centroides, classes):
         for c in classes
     }
     return min(distancias, key=distancias.get)
+
+
+def classificar_qda(linha_teste, modelo, classes):
+    """
+    QDA — Discriminante Quadrático.
+
+    Computa para cada classe a função discriminante:
+        g_i(x) = -½(x-μᵢ)ᵀΣᵢ⁻¹(x-μᵢ) + ln p(Wᵢ) + cᵢ
+    onde  cᵢ = -½ ln|Σᵢ| - (d/2) ln(2π)
+
+    A classe com maior g_i(x) é escolhida.
+    """
+    x = np.array(linha_teste, dtype=float)
+    d = len(x)
+
+    scores = {}
+    for classe in classes:
+        mu    = modelo["medias"][classe]
+        sigma = modelo["covariancias"][classe]
+        priori = modelo["a_prioris"][classe]
+
+        sigma_reg = regularizar(sigma)
+        sigma_inv = np.linalg.inv(sigma_reg)
+        det = max(float(np.linalg.det(sigma_reg)), EPSILON)
+
+        diff = x - mu
+        # termo quadrático
+        g = -0.5 * float(diff @ sigma_inv @ diff)
+        # log-priori
+        g += np.log(max(priori, EPSILON))
+        # constante cᵢ = -½ ln|Σᵢ| - (d/2) ln(2π)
+        g += -0.5 * np.log(det) - (d / 2) * np.log(2 * np.pi)
+
+        scores[classe] = g
+
+    return max(scores, key=scores.get)
+
+
+def classificar_lda(linha_teste, modelo, classes):
+    """
+    LDA — Discriminante Linear.
+
+    Computa para cada classe (Eq. 9 dos slides):
+        g_i(x) = wᵢᵀ x + wᵢ₀
+    onde wᵢ e wᵢ₀ foram calculados no treino.
+
+    A classe com maior g_i(x) é escolhida.
+    """
+    x = np.array(linha_teste, dtype=float)
+
+    scores = {
+        classe: float(modelo["w"][classe] @ x) + modelo["w0"][classe]
+        for classe in classes
+    }
+    return max(scores, key=scores.get)
 
 def classificar_knn(linha_teste, dados_treino, classes, k=5):
     """
@@ -404,6 +599,50 @@ def realizar_knn(dados, proporcao_treino, k=5):
     return taxa, registros, dados_treino, dados_teste
 
 
+def realizar_qda(dados, proporcao_treino, modo="qda_full"):
+    """
+    Executa uma realização do QDA.
+    modo: "qda_full" ou "qda_diag"
+    """
+    classes = dados["target"].unique()
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    modelo = treinar_qda(dados_treino, classes, modo=modo)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_qda(linha[:-1].values, modelo, classes)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros, modelo, dados_treino, dados_teste
+
+
+def realizar_lda(dados, proporcao_treino, modo="lda"):
+    """
+    Executa uma realização do LDA.
+    modo: "lda" ou "lda_esferico"
+    """
+    classes = dados["target"].unique()
+    dados_treino, dados_teste = split_treino_teste(dados, proporcao_treino)
+    modelo = treinar_lda(dados_treino, classes, modo=modo)
+
+    acertos = 0
+    registros = []
+    for _, linha in dados_teste.iterrows():
+        previsto = classificar_lda(linha[:-1].values, modelo, classes)
+        real = linha["target"]
+        registros.append((real, previsto))
+        if previsto == real:
+            acertos += 1
+
+    taxa = (acertos / len(dados_teste)) * 100
+    return taxa, registros, modelo, dados_treino, dados_teste
+
+
 # ---- 7. VISUALIZAÇÃO ----------------------------------------
 
 def melhor_par_atributos(dados, classes):
@@ -448,18 +687,18 @@ def melhor_par_atributos(dados, classes):
 
     return melhor
 
-def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributos, dados_treino, dados_teste):
+def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributos,
+                               dados_treino, dados_teste, classificador_fn=None,
+                               titulo_extra=""):
     """
     Plota a superfície de decisão para um par de atributos.
 
-    Técnica: classifica cada ponto de uma grade 2D e pinta pela classe
-    vencedora. A fronteira de decisão é desenhada onde a classe muda
-    entre pixels vizinhos (pintada de preto), conforme sugerido pelo professor.
-
-    par_atributos : (atributo 1, atributo 2)
-    dados_treino  : DataFrame da realização representativa
-    dados_teste   : DataFrame da realização representativa
+    classificador_fn : função f(ponto, modelo, classes) → classe
+                       Se None, usa classificar_bayes.
+    titulo_extra     : string adicionada ao título (ex: "QDA full")
     """
+    if classificador_fn is None:
+        classificador_fn = classificar_bayes
     a1, a2 = par_atributos
     atributos = list(dados.columns[:-1])
     cores = ["#2196F3", "#4CAF50", "#FF5722", "#9C27B0", "#FF9800", "#00BCD4"]
@@ -482,7 +721,7 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
             ponto = medias_globais.copy()
             ponto[a1] = X1[i, j]
             ponto[a2] = X2[i, j]
-            grade_classes[i, j] = classificar_naive(ponto.values, modelo, classes, atributos)
+            grade_classes[i, j] = classificador_fn(ponto.values, modelo, classes)
 
     #  converte classes para inteiros para detectar mudanças entre pixels 
     indice_classe = {c: i for i, c in enumerate(classes)}
@@ -510,25 +749,48 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
 
     ax.scatter(borda_x, borda_y, c="black", s=0.3, zorder=2)
 
-    #  curvas de nível das gaussianas (formato elipsoidal por classe) 
-    for c in classes:
-        # monta matriz 2x2 diagonal com as variâncias do par
-        # diagonal = pressuposto de independência do Naive Bayes
-        v1 = modelo["variancias"][c][a1]
-        v2 = modelo["variancias"][c][a2]
-        u_2d = np.array([modelo["medias"][c][a1], modelo["medias"][c][a2]])
+    #  curvas de nível das gaussianas (apenas para modelos com covariância por classe) 
+    i1 = atributos.index(a1)
+    i2 = atributos.index(a2)
+
+    if "covariancias" in modelo:
+        for c in classes:
+            u_full = np.array(modelo["medias"][c])
+            sigma_full = modelo["covariancias"][c]
+
+            # extrai submatriz 2x2 do par escolhido
+            u_2d = np.array([u_full[i1], u_full[i2]])
+            sigma_2d = np.array([
+                [sigma_full[i1, i1], sigma_full[i1, i2]],
+                [sigma_full[i2, i1], sigma_full[i2, i2]]
+            ])
+
+            Z = np.array([
+                [gaussiana_d(np.array([x1, x2]), u_2d, sigma_2d)
+                 for x1 in x1_lin]
+                for x2 in x2_lin
+            ])
+
+            ax.contour(X1, X2, Z, levels=4,
+                       colors=[cores_classe[c]], linewidths=1.5, zorder=3)
+
+    elif "sigma" in modelo:
+        # LDA: uma única gaussiana por classe usando Σ compartilhada
+        sigma_full = modelo["sigma"]
         sigma_2d = np.array([
-            [v1, 0],
-            [0,  v2]
+            [sigma_full[i1, i1], sigma_full[i1, i2]],
+            [sigma_full[i2, i1], sigma_full[i2, i2]]
         ])
-
-        Z = np.array([
-            [gaussiana_d(np.array([x1, x2]), u_2d, sigma_2d)
-            for x1 in x1_lin]
-            for x2 in x2_lin
-        ])
-
-        ax.contour(X1, X2, Z, levels=4, colors=[cores_classe[c]], linewidths=1.5, zorder=3)
+        for c in classes:
+            u_full = np.array(modelo["medias"][c])
+            u_2d = np.array([u_full[i1], u_full[i2]])
+            Z = np.array([
+                [gaussiana_d(np.array([x1, x2]), u_2d, sigma_2d)
+                 for x1 in x1_lin]
+                for x2 in x2_lin
+            ])
+            ax.contour(X1, X2, Z, levels=4,
+                       colors=[cores_classe[c]], linewidths=1.5, zorder=3)
 
     #  pontos de treino (círculo) e teste (X) por classe 
     for c in classes:
@@ -544,11 +806,14 @@ def plotar_superficie_decisao(nome_dataset, dados, modelo, classes, par_atributo
 
     ax.set_xlabel(a1)
     ax.set_ylabel(a2)
-    ax.set_title(f"Superfície de Decisão — {nome_dataset}\n({a1} × {a2})")
+    titulo = f"Superfície de Decisão — {nome_dataset}"
+    if titulo_extra:
+        titulo += f" [{titulo_extra}]"
+    titulo += f"\n({a1} × {a2})"
+    ax.set_title(titulo)
     ax.legend(fontsize=8, loc="upper left", markerscale=1.2)
     plt.tight_layout()
     plt.show()
-
 
 def plotar_matriz_confusao(nome_dataset, registros, classes):
     """
@@ -594,51 +859,81 @@ def executar_dataset(nome_dataset, k_knn=5):
     PROPORCAO_TREINO = 0.8
     N_REALIZACOES = 25
 
-    print("=" * 50)
+    print("=" * 60)
     print("EXECUTANDO DATASET:", nome_dataset)
-    print("=" * 50)
+    print("=" * 60)
 
     dados = carregar_dados(nome_dataset)
     classes = dados["target"].unique()
 
-    historico_bayes = []
-    historico_naive = []
-    historico_dmc   = []
-    historico_knn   = []
+    # ---- realizações -------------------------------------------
+        historico_bayes     = []
+        historico_naive     = []
+        historico_dmc       = []
+        historico_knn       = []
+    historico_qda_full  = []   # QDA: Σᵢ completa por classe
+    historico_qda_diag  = []   # QDA: Σᵢ diagonal por classe
+    historico_lda       = []   # LDA: Σ pooled compartilhada
+    historico_lda_esf   = []   # LDA: Σ = σ²I (esférica)
 
     for _ in range(N_REALIZACOES):
         historico_bayes.append(realizar_bayes(dados, PROPORCAO_TREINO))
         historico_naive.append(realizar_naive(dados, PROPORCAO_TREINO))
         historico_dmc.append(realizar_dmc(dados, PROPORCAO_TREINO))
         historico_knn.append(realizar_knn(dados, PROPORCAO_TREINO, k=k_knn))
+        historico_qda_full.append(realizar_qda(dados, PROPORCAO_TREINO, modo="qda_full"))
+        historico_qda_diag.append(realizar_qda(dados, PROPORCAO_TREINO, modo="qda_diag"))
+        historico_lda.append(realizar_lda(dados, PROPORCAO_TREINO, modo="lda"))
+        historico_lda_esf.append(realizar_lda(dados, PROPORCAO_TREINO, modo="lda_esferico"))
 
+    # ---- resumo de acurácia ------------------------------------
     def resumo(historico, nome):
         taxas = [h[0] for h in historico]
         acc   = media(taxas)
         dev   = math.sqrt(variancia(taxas))
-        print(f"  {nome:15s}: {acc:.2f}% ± {dev:.2f}%")
+        print(f"  {nome:22s}: {acc:6.2f}% ± {dev:.2f}%")
         return acc, dev
 
     print(f"\nAcurácia média ({N_REALIZACOES} realizações):")
-    acc_bayes, dev_bayes = resumo(historico_bayes, "Bayesiano")
-    acc_naive, dev_naive = resumo(historico_naive, "Naive Bayes")
-    acc_dmc,   dev_dmc   = resumo(historico_dmc,   "DMC")
-    acc_knn,   dev_knn   = resumo(historico_knn,   f"KNN (k={k_knn})")
+    print(f"  {'--- Trabalhos Anteriores ---':22s}")
+    acc_bayes,    dev_bayes    = resumo(historico_bayes,    "Bayesiano Gauss.")
+    acc_naive,    dev_naive    = resumo(historico_naive,    "Naive Bayes")
+    acc_dmc,      dev_dmc      = resumo(historico_dmc,      "DMC")
+    acc_knn,      dev_knn      = resumo(historico_knn,      f"KNN (k={k_knn})")
+    print(f"  {'--- Trabalho Atual (LDA/QDA) ---':22s}")
+    acc_qda_full, dev_qda_full = resumo(historico_qda_full, "QDA (Σᵢ completa)")
+    acc_qda_diag, dev_qda_diag = resumo(historico_qda_diag, "QDA (Σᵢ diagonal)")
+    acc_lda,      dev_lda      = resumo(historico_lda,      "LDA (Σ pooled)")
+    acc_lda_esf,  dev_lda_esf  = resumo(historico_lda_esf,  "LDA (Σ=σ²I esf.)")
 
-    # realização mais próxima da média → mais representativa
-    rep_naive = min(historico_naive, key=lambda h: abs(h[0] - acc_naive))
+    # ---- realização representativa: QDA full -------------------
+    rep_qda  = min(historico_qda_full, key=lambda h: abs(h[0] - acc_qda_full))
+    rep_lda  = min(historico_lda,      key=lambda h: abs(h[0] - acc_lda))
+    rep_naive = min(historico_naive,   key=lambda h: abs(h[0] - acc_naive))
 
-    # matriz de confusão do Naive Bayes
-    plotar_matriz_confusao(nome_dataset, rep_naive[1], classes)
+    # ---- matriz de confusão (realização representativa QDA) ----
+    print(f"\nMatriz de confusão — QDA full (realização mais próxima da média):")
+    plotar_matriz_confusao(nome_dataset + " [QDA full]", rep_qda[1], classes)
 
-    # superfície de decisão
+    # ---- superfície de decisão ---------------------------------
     if nome_dataset in DATASETS_COM_SUPERFICIE_DECISAO:
         par = melhor_par_atributos(dados, classes)
         print(f"\nPar escolhido para superfície de decisão: {par}")
-        taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_naive
+
+        taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_qda
         plotar_superficie_decisao(
             nome_dataset, dados, modelo_rep, classes,
-            par, treino_rep, teste_rep
+            par, treino_rep, teste_rep,
+            classificador_fn=classificar_qda,
+            titulo_extra="QDA Σᵢ completa"
+        )
+
+        taxa_rep, registros_rep, modelo_rep, treino_rep, teste_rep = rep_lda
+        plotar_superficie_decisao(
+            nome_dataset, dados, modelo_rep, classes,
+            par, treino_rep, teste_rep,
+            classificador_fn=classificar_lda,
+            titulo_extra="LDA Σ pooled"
         )
 
 
