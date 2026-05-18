@@ -15,6 +15,9 @@
 \onehalfspacing
 \usepackage{indentfirst}
 \usepackage{microtype}
+\usepackage{tabularx}
+\usepackage{ragged2e}
+\newcolumntype{L}{>{\RaggedRight\arraybackslash}X} 
 
 % ---- Cores e Hiperlinks ------------------------------------
 \usepackage{xcolor}
@@ -94,141 +97,351 @@ Multivariado, Naive Bayes, KNN e DMC).
 \section{Fundamentação Teórica}
 % =============================================================
 
-\subsection{Classificador Bayesiano Gaussiano}
+\subsection{Classificador Bayesiano Gaussiano e o QDA}
+O classificador Bayesiano ótimo tem como objetivo atribuir uma amostra de teste $\mathbf{x}$ à classe $W_i$ que apresentar a maior probabilidade \textit{a posteriori} $P(W_i \mid \mathbf{x})$. Pelo Teorema de Bayes, essa probabilidade é proporcional ao produto da verossimilhança pela probabilidade a priori: $P(W_i \mid \mathbf{x}) \propto p(\mathbf{x} \mid W_i)\,P(W_i)$. 
 
-O classificador Bayesiano ótimo atribui uma amostra $\mathbf{x}$ à
-classe $W_i$ que maximiza a posteriori
-$P(W_i \mid \mathbf{x}) \propto p(\mathbf{x} \mid W_i)\,P(W_i)$.
-Quando cada verossimilhança $p(\mathbf{x} \mid W_i)$ é uma gaussiana
-multivariada, é preferível trabalhar com o logaritmo natural:
-
+Quando assumimos que os dados de cada classe seguem uma distribuição Gaussiana (Normal) multivariada, a equação envolve exponenciais. Para simplificar as contas matematicamente, aplicamos o logaritmo natural ($\ln$), que é uma função monotomicamente crescente e não altera qual classe terá o valor máximo. Assim, a nossa \textbf{função discriminante} básica passa a ser:
 \begin{equation}
-    g_i(\mathbf{x}) = \ln p(\mathbf{x} \mid W_i) + \ln P(W_i)
-    \label{eq:gi_log}
+    g_i(\mathbf{x}) = \ln p(\mathbf{x} \mid W_i) + \ln P(W_i) \label{eq:gi_log}
 \end{equation}
 
-Expandindo a Eq.~\eqref{eq:gi_log} com a gaussiana $d$-dimensional
-$\mathcal{N}(\boldsymbol{\mu}_i, \Sigma_i)$:
+\noindent \textbf{Entendendo as Variáveis Base:}
+\begin{itemize}
+    \item $\mathbf{x}$: É o \textbf{vetor coluna} das características da amostra. Tem formato $d \times 1$, onde $d$ é o número de atributos (dimensões) do problema.
+    \item $P(W_i)$: É a \textbf{probabilidade a priori} da classe $W_i$. É um valor \textbf{escalar} ($1 \times 1$) que reflete o nosso conhecimento prévio sobre a frequência da classe antes de olharmos para os dados.
+\end{itemize}
 
+\vspace{0.3cm}
+\noindent \textbf{Passo 1: Inserindo a Gaussiana Multivariada} \\
+Expandindo a Eq.~\eqref{eq:gi_log} ao substituir a verossimilhança $p(\mathbf{x} \mid W_i)$ pela fórmula matemática da gaussiana $d$-dimensional $\mathcal{N}(\boldsymbol{\mu}_i, \Sigma_i)$, o logaritmo cancela a exponencial e chegamos à equação:
 \begin{equation}
-    g_i(\mathbf{x}) =
-        -\frac{1}{2}(\mathbf{x}-\boldsymbol{\mu}_i)^T
-         \Sigma_i^{-1}(\mathbf{x}-\boldsymbol{\mu}_i)
-        + \ln P(W_i) + c_i
-    \label{eq:gi_quadratico}
+    g_i(\mathbf{x}) = -\frac{1}{2}(\mathbf{x}-\boldsymbol{\mu}_i)^T \Sigma_i^{-1}(\mathbf{x}-\boldsymbol{\mu}_i) + \ln P(W_i) + c_i \label{eq:gi_quadratico}
 \end{equation}
 
-\noindent onde $c_i = -\tfrac{d}{2}\ln 2\pi - \tfrac{1}{2}\ln|\Sigma_i|$
-é a constante normalizadora. Este é o \textbf{discriminante
-quadrático geral}, pois a superfície de decisão
-$g_i(\mathbf{x}) - g_j(\mathbf{x}) = 0$ é uma quádrica (elipse,
-hipérbole, par de retas).
+\noindent \textbf{Entendendo os Parâmetros Gaussianos:}
+\begin{itemize}
+    \item $\boldsymbol{\mu}_i$: É o \textbf{vetor de médias} da classe $W_i$. Formato: \textbf{vetor coluna} $d \times 1$.
+    \item $\Sigma_i$: É a \textbf{matriz de covariância} da classe $W_i$. Formato: \textbf{matriz quadrada} $d \times d$. Ela modela o grau de espalhamento dos dados e a correlação entre os diferentes atributos daquela classe específica.    
+    \item $\Sigma_i^{-1}$: É a \textbf{matriz inversa} da covariância ($d \times d$).
+    \item $(\mathbf{x}-\boldsymbol{\mu}_i)^T$: O sobrescrito $T$ indica a \textbf{transposição}, transformando o vetor coluna num \textbf{vetor linha} $1 \times d$. 
+    \item \textit{A Mágica da Álgebra:} O termo $(\mathbf{x}-\boldsymbol{\mu}_i)^T \Sigma_i^{-1}(\mathbf{x}-\boldsymbol{\mu}_i)$ representa a multiplicação de um \textit{vetor linha} ($1 \times d$), por uma \textit{matriz} ($d \times d$), por um \textit{vetor coluna} ($d \times 1$). O resultado dessa multiplicação em cadeia é um \textbf{único número (escalar)} $1 \times 1$. Isso é fundamental, pois $g_i(\mathbf{x})$ precisa retornar uma pontuação única (escalar) para classificar a amostra.
+    \item $c_i$: É uma constante normalizadora \textbf{escalar}, dada por $-\tfrac{d}{2}\ln 2\pi - \tfrac{1}{2}\ln|\Sigma_i|$, onde $|\Sigma_i|$ é o determinante da matriz.
+\end{itemize}
 
-Expandindo matricialmente:
+Este é o modelo geral do \textbf{Discriminante Quadrático (QDA)}. Como cada classe possui a sua própria matriz de covariância ($\Sigma_i$), a superfície de decisão geométrica que separa as classes no espaço será curvilínea (uma quádrica, como uma elipse, parábola ou hipérbole).
 
+\vspace{0.3cm}
+\noindent \textbf{Passo 2: Expansão Matricial} \\
+Aplicando a propriedade distributiva na Eq.~\eqref{eq:gi_quadratico}, abrimos os parênteses do termo quadrático:
 \begin{equation}
-    g_i(\mathbf{x}) =
-        -\frac{1}{2}\mathbf{x}^T\Sigma_i^{-1}\mathbf{x}
-        +\frac{1}{2}\mathbf{x}^T\Sigma_i^{-1}\boldsymbol{\mu}_i
-        -\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma_i^{-1}\boldsymbol{\mu}_i
-        +\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma_i^{-1}\mathbf{x}
-        + \ln P(W_i) + c_i
-    \label{eq:gi_expandido}
+    g_i(\mathbf{x}) = \underbrace{-\frac{1}{2}\mathbf{x}^T\Sigma_i^{-1}\mathbf{x}}_{\text{Termo Quadrático}} +\underbrace{\frac{1}{2}\mathbf{x}^T\Sigma_i^{-1}\boldsymbol{\mu}_i + \frac{1}{2}\boldsymbol{\mu}_i^T\Sigma_i^{-1}\mathbf{x}}_{\text{Termos Lineares dependentes de } \mathbf{x}} - \underbrace{\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma_i^{-1}\boldsymbol{\mu}_i + \ln P(W_i) + c_i}_{\text{Termos Constantes}} \label{eq:gi_expandido}
 \end{equation}
 
-\subsection{Superfície de Decisão Linear --- $\Sigma_i = \Sigma$}
+\subsection{Superfície de Decisão Linear (LDA) --- $\Sigma_i = \Sigma$}
+O \textbf{LDA (Análise Discriminante Linear)} é uma simplificação estratégica do modelo anterior. O que acontece se assumirmos que a dispersão dos dados é idêntica em todas as classes? Nesse caso, a matriz de covariância torna-se compartilhada (pooled): $\Sigma_i = \Sigma$.
 
-Quando todas as classes compartilham a \textbf{mesma} matriz de
-covariância ($\Sigma_i = \Sigma$), o termo quadrático
-$\mathbf{x}^T\Sigma_i^{-1}\mathbf{x}$ e a constante $c_i$ são
-idênticos em todas as classes e se cancelam em
-$g_i(\mathbf{x})-g_j(\mathbf{x})=0$. O discriminante se reduz a:
-
+Ao fazer isso, o termo puramente quadrático da equação anterior ($-\frac{1}{2}\mathbf{x}^T\Sigma^{-1}\mathbf{x}$) e a constante $c_i$ passam a ser matematicamente iguais para todas as funções $g_i(\mathbf{x})$. Como o objetivo do classificador é apenas verificar qual $g_i(\mathbf{x})$ é maior, termos idênticos em todas as equações podem ser cancelados. Assim, o discriminante \textbf{perde a sua parte quadrática} e se reduz a:
 \begin{equation}
-    g_i(\mathbf{x}) =
-        \frac{1}{2}\mathbf{x}^T\Sigma^{-1}\boldsymbol{\mu}_i
-        -\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\boldsymbol{\mu}_i
-        +\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\mathbf{x}
-        + \ln P(W_i)
-    \label{eq:gi_linear}
+    g_i(\mathbf{x}) = \frac{1}{2}\mathbf{x}^T\Sigma^{-1}\boldsymbol{\mu}_i +\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\mathbf{x} -\frac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\boldsymbol{\mu}_i  + \ln P(W_i) \label{eq:gi_linear}
 \end{equation}
 
-Definindo $\mathbf{w}_i = \Sigma^{-1}\boldsymbol{\mu}_i$ e
-$w_{i0} = \ln P(W_i) - \tfrac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\boldsymbol{\mu}_i$,
-a Eq.~\eqref{eq:gi_linear} torna-se simplesmente:
 
+\vspace{0.5cm}
+\noindent\rule{\textwidth}{0.4pt}
+\textbf{Aprofundamento Didático: Visualizando os Elementos da Matriz}
+
+Para eliminar qualquer abstração geométrica, vamos abrir vetores e matrizes para visualizar o que compõe os termos da equação, como o $\boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x}$. Considerando um conjunto de dados com $d$ atributos, nós temos:
+
+\begin{itemize}
+    \item $\mathbf{x}$ é o vetor coluna de características da amostra:
+    $\mathbf{x} = \begin{bmatrix} x_1 \\ x_2 \\ \vdots \\ x_d \end{bmatrix}$
+
+    \item $\boldsymbol{\mu}_i$ é o vetor coluna de médias da classe $W_i$. Sua forma transposta $\boldsymbol{\mu}_i^T$ vira um vetor linha:
+    $\boldsymbol{\mu}_i^T = \begin{bmatrix} \mu_{i1} & \mu_{i2} & \dots & \mu_{id} \end{bmatrix}$
+
+    \item $\Sigma_i^{-1}$ é a matriz inversa de covariância (vamos chamar seus elementos de $s_{jk}$):
+    $\Sigma_i^{-1} = \begin{bmatrix} s_{11} & s_{12} & \dots & s_{1d} \\ s_{21} & s_{22} & \dots & s_{2d} \\ \vdots & \vdots & \ddots & \vdots \\ s_{d1} & s_{d2} & \dots & s_{dd} \end{bmatrix}$
+\end{itemize}
+
+Ao montarmos a multiplicação do termo $\boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x}$, ela fica literalmente assim:
+\begin{equation*}
+    \boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x} = 
+    \underbrace{\begin{bmatrix} \mu_{i1} & \mu_{i2} & \dots & \mu_{id} \end{bmatrix}}_{\text{Vetor Linha } (1 \times d)}
+    \underbrace{\begin{bmatrix} s_{11} & s_{12} & \dots & s_{1d} \\ s_{21} & s_{22} & \dots & s_{2d} \\ \vdots & \vdots & \ddots & \vdots \\ s_{d1} & s_{d2} & \dots & s_{dd} \end{bmatrix}}_{\text{Matriz Quadrada } (d \times d)}
+    \underbrace{\begin{bmatrix} x_1 \\ x_2 \\ \vdots \\ x_d \end{bmatrix}}_{\text{Vetor Coluna } (d \times 1)}
+\end{equation*}
+
+\begin{equation*}
+    \boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x} = \begin{bmatrix} \mu_{i1} & \mu_{i2} & \dots & \mu_{id} 
+    \end{bmatrix}
+    \begin{bmatrix}
+    s_{11} \cdot x_1 + s_{12} \cdot x_2 + \dots + s_{1d} \cdot x_d \\
+    s_{21} \cdot x_1 + s_{22} \cdot x_2 + \dots + s_{2d} \cdot x_d \\ 
+    \vdots \\
+    s_{d1} \cdot x_1 + s_{d2} \cdot x_2 + \dots + s_{dd} \cdot x_d
+    \end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+    \boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x} = 
+    \mu_{i1}(s_{11} \cdot x_1 + s_{12} \cdot x_2 + \dots + s_{1d} \cdot x_d )\\
+    + \ldots \\
+    + \mu_{id}(s_{d1} \cdot x_1 + s_{d2} \cdot x_2 + \dots + s_{dd} \cdot x_d)
+\end{equation*}
+
+\begin{equation*}
+    \boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x} =
+    \sum_{n=1}^d \sum_{m=1}^d
+    \mu_{i n} \cdot s_{n m} \cdot x_{m}
+\end{equation*}
+
+
+
+Agora provar a equivalência com o termo $\mathbf{x}^T \Sigma_i^{-1} \boldsymbol{\mu}_i$:
+\begin{equation*}
+    \mathbf{x}^T \Sigma_i^{-1} \boldsymbol{\mu}_i  = 
+    \underbrace{\begin{bmatrix}  
+    x_1 & x_2 & \dots & x_d
+    \end{bmatrix}}_{\text{Vetor Linha } (1 \times d)}
+    \underbrace{\begin{bmatrix} s_{11} & s_{12} & \dots & s_{1d} \\ s_{21} & s_{22} & \dots & s_{2d} \\ \vdots & \vdots & \ddots & \vdots \\ s_{d1} & s_{d2} & \dots & s_{dd} \end{bmatrix}}_{\text{Matriz Quadrada } (d \times d)}
+    \underbrace{\begin{bmatrix} 
+    \mu_{i1} \\ \mu_{i2} \\ \vdots \\ \mu_{id}
+     \end{bmatrix}}_{\text{Vetor Coluna } (d \times 1)}
+\end{equation*}
+
+\begin{equation*}
+    \mathbf{x}^T \Sigma_i^{-1} \boldsymbol{\mu}_i  = 
+    \begin{bmatrix} 
+    x_1 & x_2 & \dots & x_d 
+    \end{bmatrix}
+    \begin{bmatrix}
+    s_{11} \cdot \mu_{i1} + s_{12} \cdot \mu_{i2} + \dots + s_{1d} \cdot \mu_{id} \\
+    s_{21} \cdot \mu_{i1} + s_{22} \cdot \mu_{i2} + \dots + s_{2d} \cdot \mu_{id} \\ 
+    \vdots \\
+    s_{d1} \cdot \mu_{i1} + s_{d2} \cdot \mu_{i2} + \dots + s_{dd} \cdot \mu_{id}
+    \end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+    \mathbf{x}^T \Sigma_i^{-1} \boldsymbol{\mu}_i  = 
+    x_1(s_{11} \cdot \mu_{i1} + s_{12} \cdot \mu_{i2} + \dots + s_{1d} \cdot \mu_{id} )\\
+    + \ldots \\
+    + x_d(s_{d1} \cdot \mu_{i1} + s_{d2} \cdot \mu_{i2} + \dots + s_{dd} \cdot \mu_{id})
+\end{equation*}
+
+\begin{equation*}
+    \mathbf{x}^T \Sigma_i^{-1} \boldsymbol{\mu}_i  =
+    \sum_{n=1}^d \sum_{m=1}^d
+    x_{n} \cdot s_{n m} \cdot \mu_{i m}
+\end{equation*}
+
+
+Para provarmos que a igualdade dos termos:
+
+\begin{equation*}
+\mathbf{x}^T \Sigma_i^{-1} \boldsymbol{\mu}_i  = 
+\boldsymbol{\mu}_i^T \Sigma_i^{-1} \mathbf{x}
+\end{equation*}
+
+\begin{equation*}
+\sum_{n=1}^d \sum_{m=1}^d
+x_{n} \cdot s_{n m} \cdot \mu_{i m}
+=
+\sum_{n=1}^d \sum_{m=1}^d
+\mu_{i n} \cdot s_{n m} \cdot x_{m}
+\end{equation*}
+
+\begin{equation*}
+\sum_{n=1}^d \sum_{m=1}^d
+x_{n} \cdot s_{n m} \cdot \mu_{i m}
+=
+\sum_{n=1}^d \sum_{m=1}^d
+x_{n} \cdot s_{m n} \cdot \mu_{i m}
+\end{equation*}
+
+Pela simetria de $\Sigma$ podemos admitir que sua inversa também será simétrica.
+
+\begin{equation*}
+\sum_{n=1}^d \sum_{m=1}^d
+x_{n} \cdot s_{n m} \cdot \mu_{i m}
+=
+\sum_{n=1}^d \sum_{m=1}^d
+x_{n} \cdot s_{n m} \cdot \mu_{i m}
+\end{equation*}
+
+\vspace{0.2cm}
+É exatamente por isso que os dois termos centrais da Eq.~\eqref{eq:gi_expandido} se somam ($0{,}5 + 0{,}5 = 1$), gerando a equação linear do LDA.
+
+\noindent\rule{\textwidth}{0.4pt}
+\vspace{0.5cm}
+
+
+
+Para deixar essa equação enxuta, podemos agrupar os termos. Definimos um novo vetor de pesos $\mathbf{w}_i$ e uma constante de viés (\textit{bias}) $w_{i0}$:
+\begin{itemize}
+    \item $\mathbf{w}_i = \Sigma_{i}^{-1}\boldsymbol{\mu}_i$: Um \textbf{vetor coluna} ($d \times 1$) que define a orientação/inclinação da reta ou plano de decisão.
+    \item $w_{i0} = \ln P(W_i) - \tfrac{1}{2}\boldsymbol{\mu}_i^T\Sigma_{i}^{-1}\boldsymbol{\mu}_i $: Um termo \textbf{escalar} de ajuste.
+\end{itemize}
+
+Substituindo essas novas variáveis, a equação vira uma função estritamente linear:
 \begin{equation}
-    \boxed{g_i(\mathbf{x}) = \mathbf{w}_i^T\mathbf{x} + w_{i0}}
-    \label{eq:lda}
+    \boxed{g_i(\mathbf{x}) = \mathbf{w}_i^T\mathbf{x} + w_{i0}} \label{eq:lda}
+\end{equation}
+\noindent O resultado geométrico prático do LDA é que a superfície de decisão $g_i(\mathbf{x}) = g_j(\mathbf{x})$ que separa duas classes vira uma linha perfeitamente reta (um \textbf{hiperplano}).
+
+\subsection{Caso Especial (Distância Mínima Euclidiana) --- $\Sigma = \sigma^2 I$}
+Podemos realizar uma simplificação ainda mais forte. E se assumirmos que, além de compartilharem a matriz $\Sigma$, todos os atributos do nosso dataset são totalmente independentes entre si (descorrelacionados) e possuem exatamente a mesma variância (espalhamento)?.
+
+Nesse caso extremo, a matriz de covariância compartilhada $\Sigma$ vira simplesmente $\sigma^2 I$, onde $I$ é a \textbf{Matriz Identidade} e $\sigma^2$ é a variância escalar. A equação do LDA se reduz para:
+\begin{equation}
+    g_i(\mathbf{x}) = \frac{1}{\sigma^2}\boldsymbol{\mu}_i^T\mathbf{x} + w_{i0} \label{eq:lda_esferico}
 \end{equation}
 
-\noindent A superfície de decisão $g_i(\mathbf{x}) = g_j(\mathbf{x})$
-é um \textbf{hiperplano}, ortogonal à transformação linear
-$\Sigma^{-1}(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)$.
+O hiperplano de decisão será:
 
-\subsection{Caso Especial --- $\Sigma = \sigma^2 I$}
+\begin{equation*}
+    g_{ij} (\mathbf{x}) \equiv
+    g_i(\mathbf{x}) - g_j(\mathbf{x}) = 0
+\end{equation*}
 
-Assumindo adicionalmente que todos os atributos são descorrelacionados
-e possuem a mesma variância $\sigma^2$:
+\begin{equation*}
+    \frac{1}{\sigma^2}\boldsymbol{\mu}_i^T\mathbf{x} + w_{i0} 
+    -
+    \frac{1}{\sigma^2}\boldsymbol{\mu}_j^T\mathbf{x} - w_{j0}
+    = 0
+\end{equation*}
 
-\begin{equation}
-    g_i(\mathbf{x}) =
-        \frac{1}{\sigma^2}\boldsymbol{\mu}_i^T\mathbf{x} + w_{i0}
-    \label{eq:lda_esferico}
-\end{equation}
+\begin{equation*}
+    \frac{1}{\sigma^2}\boldsymbol{\mu}_i^T\mathbf{x} + \ln P(W_i) - \tfrac{1}{2}\boldsymbol{\mu}_i^T\Sigma^{-1}\boldsymbol{\mu}_i 
+    -
+    \frac{1}{\sigma^2}\boldsymbol{\mu}_j^T\mathbf{x} - \ln P(W_j) + \tfrac{1}{2}\boldsymbol{\mu}_j^T\Sigma^{-1}\boldsymbol{\mu}_j
+    = 0
+\end{equation*}
 
-O hiperplano de decisão passa pelo ponto médio
-$\mathbf{x}_0 = \tfrac{1}{2}(\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)$
-(para classes equiprováveis) e é ortogonal ao vetor
-$\boldsymbol{\mu}_i - \boldsymbol{\mu}_j$. Este caso equivale ao
-classificador por distância mínima ao centroide generalizado.
+\begin{equation*}
+    \frac{1}{\sigma^2}\boldsymbol{\mu}_i^T\mathbf{x} 
+    - \frac{1}{\sigma^2}\boldsymbol{\mu}_j^T\mathbf{x} 
+    + \tfrac{1}{2\sigma^2}\boldsymbol{\mu}_j^T\boldsymbol{\mu}_j
+    - \tfrac{1}{2\sigma^2}\boldsymbol{\mu}_i^T\boldsymbol{\mu}_i 
+    + \ln P(W_i) 
+    - \ln P(W_j) 
+    = 0
+\end{equation*}
 
-\subsection{Quatro Situações da Matriz de Covariância}
+\begin{equation*}
+    \frac{1}{\sigma^2}
+    \left(\boldsymbol{\mu}_i^T\mathbf{x} 
+    - \boldsymbol{\mu}_j^T\mathbf{x} \right) 
+    + \tfrac{1}{2\sigma^2}
+    \left(\boldsymbol{\mu}_j^T\boldsymbol{\mu}_j
+    -\boldsymbol{\mu}_i^T\boldsymbol{\mu}_i \right)
+    + \ln \left(\frac{P(W_i)}{P(W_j)}\right)
+    = 0
+\end{equation*}
 
-A Tabela~\ref{tab:situacoes} resume os quatro modos implementados,
-correspondendo à instrução do professor de
-\textit{``verificar várias situações diferentes para as matrizes de
-covariância das classes''}.
+\begin{equation*}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T\mathbf{x} 
+    + \tfrac{1}{2}
+    (\boldsymbol{\mu}_j + \boldsymbol{\mu}_i)^T(\boldsymbol{\mu}_j - \boldsymbol{\mu}_i)
+    + \sigma^2 \ln \left(\frac{P(W_i)}{P(W_j)}\right)
+    = 0
+\end{equation*}
+
+
+\begin{equation*}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T\mathbf{x} 
+    - \tfrac{1}{2}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T(\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)
+    + \sigma^2 \ln \left(\frac{P(W_i)}{P(W_j)}\right)
+    \frac{(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)}{(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)}
+    = 0
+\end{equation*}
+
+\begin{equation*}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T
+    \left(
+    \mathbf{x} 
+    - \tfrac{1}{2}
+    (\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)
+    + \sigma^2 \ln \left(\frac{P(W_i)}{P(W_j)}\right)
+    \frac{(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)}{(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T(\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)}
+    \right)
+    = 0
+\end{equation*}
+
+\begin{equation*}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T
+    \left(
+    \mathbf{x} 
+    - \tfrac{1}{2}
+    (\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)
+    + \sigma^2 \ln \left(\frac{P(W_i)}{P(W_j)}\right)
+    \frac{\boldsymbol{\mu}_i - \boldsymbol{\mu}_j}{||\boldsymbol{\mu}_i - \boldsymbol{\mu}_j||^2}
+    \right)
+    = 0
+\end{equation*}
+
+
+
+Se as classes tiverem probabilidades a priori idênticas (equiprováveis), maximizar esse discriminante é exatamente o mesmo que classificar o padrão verificando qual vetor de média $\boldsymbol{\mu}_i$ está geograficamente mais perto dele, utilizando o cálculo convencional de \textbf{Distância Euclidiana}.
+
+\begin{equation*}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T
+    \left(
+    \mathbf{x} 
+    - \tfrac{1}{2}
+    (\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)
+    + \sigma^2 \ln 1
+    \frac{\boldsymbol{\mu}_i - \boldsymbol{\mu}_j}{||\boldsymbol{\mu}_i - \boldsymbol{\mu}_j||^2}
+    \right)
+    = 0
+\end{equation*}
+
+\begin{equation*}
+    (\boldsymbol{\mu}_i - \boldsymbol{\mu}_j)^T
+    \left(
+    \mathbf{x} 
+    - \tfrac{1}{2}
+    (\boldsymbol{\mu}_i + \boldsymbol{\mu}_j)
+    \right)
+    = 0
+\end{equation*}
+
+\subsection{Resumo: Quatro Situações da Matriz de Covariância}
+A Tabela~\ref{tab:situacoes} consolida a evolução das equações demonstradas, mapeando as quatro variações de implementação solicitadas para o Trabalho 04 . 
 
 \begin{table}[H]
     \centering
-    \caption{Modos de covariância implementados.}
+    \caption{Modos de covariância e a forma geométrica resultante no modelo.}
     \label{tab:situacoes}
-    \begin{tabular}{@{}llll@{}}
+    \begin{tabularx}{\textwidth}{@{} l L l L @{}}
         \toprule
-        \textbf{Modo} & \textbf{Covariância} & \textbf{Equação} & \textbf{Fronteira} \\
+        \textbf{Modo} & \textbf{Covariância} & \textbf{Equação} & \textbf{Fronteira Geométrica} \\
         \midrule
-        QDA completo  & $\Sigma_i$ completa por classe  & Eq.~\eqref{eq:gi_quadratico} & Quádrica \\
-        QDA diagonal  & $\Sigma_i$ diagonal por classe  & Eq.~\eqref{eq:gi_quadratico} & Quádrica (eixos alinhados) \\
-        LDA \textit{pooled} & $\Sigma$ compartilhada (pooled) & Eq.~\eqref{eq:lda}          & Hiperplano \\
-        LDA esférico  & $\Sigma = \sigma^2 I$            & Eq.~\eqref{eq:lda_esferico} & Hiperplano ortogonal \\
+        QDA completo & $\Sigma_i$ completa,  individual por classe & Eq.~\eqref{eq:gi_quadratico} & Curva (Quádrica Livre) \\
+        QDA diagonal & $\Sigma_i$ diagonal, individual por classe & Eq.~\eqref{eq:gi_quadratico} & Curva (Quádrica alinhada aos eixos) \\
+        LDA \textit{pooled} & $\Sigma$ completa, compartilhada por todos & Eq.~\eqref{eq:lda} & Reta/Plano (Hiperplano) \\
+        LDA esférico & $\Sigma = \sigma^2 I$, compartilhada e isotrópica & Eq.~\eqref{eq:lda_esferico} & Reta/Plano Ortogonal (Euclidiana) \\
         \bottomrule
-    \end{tabular}
+    \end{tabularx}
 \end{table}
 
 \subsection{Classificadores de Referência}
-
-\textbf{Bayesiano Multivariado} — mesmo discriminante da
-Eq.~\eqref{eq:gi_quadratico}, implementado nos trabalhos anteriores.
-
-\textbf{Naive Bayes} — verossimilhança como produto de gaussianas 1D,
-ignorando correlações entre atributos.
-
-\textbf{DMC} — classifica pelo centroide mais próximo:
-$\hat{C} = \arg\min_{C_i}\|\mathbf{x}-\boldsymbol{c}_i\|_2$.
-
-\textbf{KNN} ($k=5$) — voto majoritário entre os $k$ vizinhos mais
-próximos no conjunto de treino.
+Para fins de comparação neste relatório, testamos a nossa implementação baseada no discriminante contra outros modelos implementados anteriormente na disciplina:
+\begin{itemize}
+    \item \textbf{Bayesiano Multivariado} — Baseia-se no mesmo fundamento do discriminante da Eq.~\eqref{eq:gi_quadratico}, utilizando o cálculo probabilístico nativo.
+    \item \textbf{Naive Bayes} — Assume total independência condicional entre os atributos; o cálculo da verossimilhança é o mero produtório de gaussianas unidimensionais (1D).
+    \item \textbf{DMC (Distância Mínima ao Centroide)} — Funciona com base puramente geométrica, classificando o padrão pela menor distância Euclidiana:
+    \begin{equation}
+    \hat{C} = \arg\min_{C_i}\|\mathbf{x}-\boldsymbol{c}_i\|_2
+    \end{equation}
+    \item \textbf{KNN ($k=5$)} — Classificação baseada no voto majoritário dos $k$ vizinhos geográficos mais próximos.
+\end{itemize}
 
 \subsection{Escolha do Par de Atributos para Visualização}
-
-O par de atributos foi selecionado pelo critério de Fisher:
-
+A escolha das duas melhores características (2D) para plotagem das superfícies de decisão foi baseada no \textbf{Critério de Fisher}, que busca maximizar a variância entre as classes e minimizar a variância dentro delas:
 \begin{equation}
-    \text{score}(a_1, a_2) = \text{Fisher}(a_1) + \text{Fisher}(a_2),
-    \quad
-    \text{Fisher}(a) =
-    \frac{\text{variância entre classes}(a)}{\text{variância dentro das classes}(a)}
+    \text{score}(a_1, a_2) = \text{Fisher}(a_1) + \text{Fisher}(a_2), \quad \text{Fisher}(a) = \frac{\text{variância entre classes}(a)}{\text{variância dentro das classes}(a)}
 \end{equation}
 
 % =============================================================
@@ -296,6 +509,7 @@ de inverter qualquer matriz de covariância, para evitar singularidades.
 
 \subsection{Acurácia Média e Desvio Padrão}
 
+
 \begin{table}[H]
     \centering
     \caption{Resultados dos trabalhos anteriores --- 25 realizações, divisão 80/20.}
@@ -304,11 +518,11 @@ de inverter qualquer matriz de covariância, para evitar singularidades.
         \toprule
         \textbf{Base de Dados} & \textbf{Bayes. Mult.} & \textbf{Naive Bayes} & \textbf{KNN ($k{=}5$)} & \textbf{DMC} \\
         \midrule
-        Íris             & $97{,}5 \pm 3{,}0$ & $94{,}8 \pm 4{,}3$ & $96{,}3 \pm 2{,}9$ & $90{,}9 \pm 4{,}9$ \\
-        Artificial I     & $99{,}2 \pm 1{,}4$ & $99{,}5 \pm 1{,}2$ & $99{,}2 \pm 1{,}7$ & $99{,}2 \pm 1{,}4$ \\
-        Coluna Vertebral & $83{,}9 \pm 4{,}5$ & $83{,}0 \pm 4{,}4$ & $82{,}3 \pm 3{,}3$ & $75{,}7 \pm 5{,}5$ \\
-        Breast Cancer    & $88{,}4 \pm 3{,}0$ & $93{,}8 \pm 1{,}9$ & $93{,}6 \pm 2{,}2$ & $87{,}9 \pm 2{,}7$ \\
-        Dermatology      & $88{,}6 \pm 3{,}8$ & $84{,}9 \pm 4{,}4$ & $86{,}2 \pm 2{,}9$ & $50{,}4 \pm 6{,}2$ \\
+        Íris             & $97{,}3 \pm 3{,}3$ & $95{,}9 \pm 2{,}9$ & $97{,}0 \pm 1{,}9$ & $92{,}2 \pm 4{,}8$ \\
+        Artificial I     & $99{,}6 \pm 1{,}1$ & $99{,}5 \pm 1{,}2$ & $99{,}4 \pm 1{,}2$ & $99{,}6 \pm 1{,}0$ \\
+        Coluna Vertebral & $84{,}8 \pm 3{,}7$ & $84{,}6 \pm 3{,}2$ & $82{,}3 \pm 3{,}5$ & $77{,}8 \pm 4{,}0$ \\
+        Breast Cancer    & $88{,}2 \pm 2{,}7$ & $93{,}7 \pm 2{,}2$ & $92{,}9 \pm 2{,}2$ & $89{,}0 \pm 2{,}4$ \\
+        Dermatology      & $88{,}0 \pm 3{,}5$ & $84{,}8 \pm 3{,}8$ & $86{,}7 \pm 3{,}7$ & $49{,}7 \pm 3{,}6$ \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -325,17 +539,14 @@ de inverter qualquer matriz de covariância, para evitar singularidades.
             & \textbf{LDA \textit{pooled}}
             & \textbf{LDA esférico} \\
         \midrule
-        Íris             & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
-        Artificial I     & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
-        Coluna Vertebral & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
-        Breast Cancer    & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
-        Dermatology      & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ & $\cdot \pm \cdot$ \\
+        Íris             & $97{,}4 \pm 2{,}3$ & $95{,}4 \pm 3{,}8$ & $98{,}5 \pm 2{,}1$ & $92{,}2 \pm 5{,}7$ \\
+        Artificial I     & $99{,}3 \pm 1{,}3$ & $99{,}4 \pm 1{,}2$ & $99{,}0 \pm 1{,}5$ & $99{,}2 \pm 1{,}4$ \\
+        Coluna Vertebral & $84{,}8 \pm 5{,}0$ & $83{,}4 \pm 4{,}6$ & $79{,}4 \pm 4{,}6$ & $77{,}2 \pm 5{,}7$ \\
+        Breast Cancer    & $89{,}0 \pm 2{,}5$ & $92{,}6 \pm 1{,}9$ & $95{,}3 \pm 1{,}7$ & $89{,}1 \pm 2{,}7$ \\
+        Dermatology      & $92{,}8 \pm 3{,}7$ & $97{,}3 \pm 1{,}6$ & $96{,}5 \pm 2{,}8$ & $53{,}7 \pm 6{,}6$ \\
         \bottomrule
     \end{tabular}
 \end{table}
-
-\noindent\textit{Nota: os valores de ``$\cdot$'' devem ser
-substituídos pelos resultados obtidos na execução do código.}
 
 \subsection{Matrizes de Confusão}
 
@@ -345,35 +556,35 @@ deste trabalho.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{iris-matrix-confusao-qda.png}
+    \includegraphics[width=0.7\textwidth]{iris-qda-matrix-confusao.png}
     \caption{Matriz de confusão --- Íris (QDA completo).}
     \label{fig:conf_iris}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{vertebral-matrix-confusao-qda.png}
+    \includegraphics[width=0.7\textwidth]{vertebral-qda-matrix-confusao.png}
     \caption{Matriz de confusão --- Vertebral Column (QDA completo).}
     \label{fig:conf_vertebral}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\textwidth]{breast-matrix-confusao-qda.png}
+    \includegraphics[width=0.5\textwidth]{breast-qda-matrix-confusao.png}
     \caption{Matriz de confusão --- Breast Cancer (QDA completo).}
     \label{fig:conf_breast}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{dermatology-matrix-confusao-qda.png}
+    \includegraphics[width=0.7\textwidth]{dermatology-qda-matrix-confusao.png}
     \caption{Matriz de confusão --- Dermatology (QDA completo).}
     \label{fig:conf_dermatology}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{artificial-matrix-confusao-qda.png}
+    \includegraphics[width=0.7\textwidth]{artificial-qda-matrix-confusao.png}
     \caption{Matriz de confusão --- Artificial I (QDA completo).}
     \label{fig:conf_artificial}
 \end{figure}
@@ -387,42 +598,42 @@ teste~($\times$).
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{artificial-superficie-qda.png}
+    \includegraphics[width=1\textwidth]{artificial-qda-superficie-decisao.png}
     \caption{Superfície de decisão --- Artificial I (QDA completo).}
     \label{fig:sup_artificial_qda}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{artificial-superficie-lda.png}
+    \includegraphics[width=1\textwidth]{artificial-lda-superficie-decisao.png}
     \caption{Superfície de decisão --- Artificial I (LDA \textit{pooled}).}
     \label{fig:sup_artificial_lda}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{iris-superficie-qda.png}
+    \includegraphics[width=1\textwidth]{iris-qda-superficie-decisao.png}
     \caption{Superfície de decisão --- Íris (QDA completo).}
     \label{fig:sup_iris_qda}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{iris-superficie-lda.png}
+    \includegraphics[width=1\textwidth]{iris-lda-superficie-decisao.png}
     \caption{Superfície de decisão --- Íris (LDA \textit{pooled}).}
     \label{fig:sup_iris_lda}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{vertebral-superficie-qda.png}
+    \includegraphics[width=1\textwidth]{vertebral-qda-superficie-decisao.png}
     \caption{Superfície de decisão --- Coluna Vertebral (QDA completo).}
     \label{fig:sup_vertebral_qda}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=1\textwidth]{vertebral-superficie-lda.png}
+    \includegraphics[width=1\textwidth]{vertebral-lda-superficie-decisao.png}
     \caption{Superfície de decisão --- Coluna Vertebral (LDA \textit{pooled}).}
     \label{fig:sup_vertebral_lda}
 \end{figure}

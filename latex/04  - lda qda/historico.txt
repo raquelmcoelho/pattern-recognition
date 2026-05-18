@@ -1,0 +1,120 @@
+============================================================
+EXECUTANDO DATASET: iris
+============================================================
+
+Acurácia média (25 realizações):
+  --- Trabalhos Anteriores ---
+  Bayesiano Gauss.      :  97.33% ± 3.27%
+  Naive Bayes           :  95.87% ± 2.87%
+  DMC                   :  92.27% ± 4.87%
+  KNN (k=5)             :  97.07% ± 1.96%
+  --- Trabalho Atual (LDA/QDA) ---
+  QDA (Σᵢ completa)     :  97.47% ± 2.36%
+  QDA (Σᵢ diagonal)     :  95.47% ± 3.87%
+  LDA (Σ pooled)        :  98.53% ± 2.12%
+  LDA (Σ=σ²I esf.)      :  92.27% ± 5.71%
+
+Matriz de confusão — QDA full (realização mais próxima da média):
+  Scores de separabilidade (Fisher-like):
+    petal length         × petal width          : 29.0929
+    sepal length         × petal length         : 17.6638
+    sepal width          × petal length         : 16.6856
+    sepal length         × petal width          : 14.6744
+    sepal width          × petal width          : 13.6961
+    sepal length         × sepal width          : 2.2670
+
+Par escolhido para superfície de decisão: ('petal length', 'petal width')
+============================================================
+EXECUTANDO DATASET: artificial_I
+============================================================
+
+Acurácia média (25 realizações):
+  --- Trabalhos Anteriores ---
+  Bayesiano Gauss.      :  99.60% ± 1.08%
+  Naive Bayes           :  99.47% ± 1.22%
+  DMC                   :  99.60% ± 1.08%
+  KNN (k=5)             :  99.47% ± 1.22%
+  --- Trabalho Atual (LDA/QDA) ---
+  QDA (Σᵢ completa)     :  99.33% ± 1.33%
+  QDA (Σᵢ diagonal)     :  99.47% ± 1.22%
+  LDA (Σ pooled)        :  99.07% ± 1.50%
+  LDA (Σ=σ²I esf.)      :  99.20% ± 1.42%
+
+Matriz de confusão — QDA full (realização mais próxima da média):
+  Scores de separabilidade (Fisher-like):
+    x1                   × x2                   : 10.8453
+
+Par escolhido para superfície de decisão: ('x1', 'x2')
+============================================================
+EXECUTANDO DATASET: vertebral_column
+============================================================
+
+Acurácia média (25 realizações):
+  --- Trabalhos Anteriores ---
+  Bayesiano Gauss.      :  84.77% ± 3.71%
+  Naive Bayes           :  84.58% ± 3.20%
+  DMC                   :  77.81% ± 4.09%
+  KNN (k=5)             :  82.32% ± 3.58%
+  --- Trabalho Atual (LDA/QDA) ---
+  QDA (Σᵢ completa)     :  84.84% ± 5.08%
+  QDA (Σᵢ diagonal)     :  83.42% ± 4.62%
+  LDA (Σ pooled)        :  79.42% ± 4.64%
+  LDA (Σ=σ²I esf.)      :  77.29% ± 5.71%
+
+Matriz de confusão — QDA full (realização mais próxima da média):
+  Scores de separabilidade (Fisher-like):
+    lumbar_lordosis_angle × degree_spondylolisthesis : 1.8341
+    sacral_slope         × degree_spondylolisthesis : 1.6938
+    pelvic_incidence     × degree_spondylolisthesis : 1.6476
+    lumbar_lordosis_angle × sacral_slope         : 1.5635
+    pelvic_incidence     × lumbar_lordosis_angle : 1.5173
+    pelvic_incidence     × sacral_slope         : 1.3770
+    pelvic_tilt          × degree_spondylolisthesis : 1.1227
+    pelvic_radius        × degree_spondylolisthesis : 1.1021
+    pelvic_tilt          × lumbar_lordosis_angle : 0.9924
+    lumbar_lordosis_angle × pelvic_radius        : 0.9718
+    pelvic_tilt          × sacral_slope         : 0.8521
+    sacral_slope         × pelvic_radius        : 0.8315
+    pelvic_incidence     × pelvic_tilt          : 0.8059
+    pelvic_incidence     × pelvic_radius        : 0.7853
+    pelvic_tilt          × pelvic_radius        : 0.2604
+
+Par escolhido para superfície de decisão: ('lumbar_lordosis_angle', 'degree_spondylolisthesis')
+============================================================
+EXECUTANDO DATASET: breast_cancer
+============================================================
+
+Acurácia média (25 realizações):
+  --- Trabalhos Anteriores ---
+  Bayesiano Gauss.      :  88.18% ± 2.75%
+  Naive Bayes           :  93.68% ± 2.26%
+  DMC                   :  89.09% ± 2.48%
+  KNN (k=5)             :  92.91% ± 2.26%
+  --- Trabalho Atual (LDA/QDA) ---
+  QDA (Σᵢ completa)     :  89.09% ± 2.58%
+  QDA (Σᵢ diagonal)     :  92.63% ± 1.92%
+  LDA (Σ pooled)        :  95.30% ± 1.70%
+  LDA (Σ=σ²I esf.)      :  89.12% ± 2.72%
+
+Matriz de confusão — QDA full (realização mais próxima da média):
+============================================================
+EXECUTANDO DATASET: dermatology
+============================================================
+
+Acurácia média (25 realizações):
+  --- Trabalhos Anteriores ---
+  Bayesiano Gauss.      :  88.05% ± 3.50%
+  Naive Bayes           :  84.76% ± 3.79%
+  DMC                   :  49.73% ± 3.63%
+  KNN (k=5)             :  86.70% ± 3.74%
+  --- Trabalho Atual (LDA/QDA) ---
+  QDA (Σᵢ completa)     :  92.86% ± 3.76%
+  QDA (Σᵢ diagonal)     :  97.30% ± 1.67%
+  LDA (Σ pooled)        :  96.54% ± 2.89%
+  LDA (Σ=σ²I esf.)      :  53.78% ± 6.69%
+
+Matriz de confusão — QDA full (realização mais próxima da média):
+
+
+
+
